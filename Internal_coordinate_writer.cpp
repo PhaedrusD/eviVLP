@@ -246,7 +246,7 @@ void insertTopologyInfo(const string& pdbFilename, const vector<ResidueInfo>& to
 // Main function
 int main() {
     std::string residueFilename = "*****.str";  // File containing topology information
-    string pdbFilename = "top_all27_prot_na_CBD.inp";  // Original PDB file name
+    string pdbFilename = "topology_IC.inp";  // Original PDB file name
 
     Atom atoms[SIZE];  // Array to store atom data
 
