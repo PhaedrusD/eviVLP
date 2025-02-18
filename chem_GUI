@@ -1,0 +1,136 @@
+#include <wx/wx.h>
+#include <wx/filedlg.h>
+#include "FileProcessor.h" // Include the header for FileProcessor
+#include <cstdlib> // for system()
+
+class MyFrame : public wxFrame {
+public:
+    MyFrame(const wxString& title); // Constructor declaration
+
+private:
+    wxString pdbFilePath;
+    wxString strFilePath;
+    wxString pyFilePath;
+    wxTextCtrl* statusText;
+    FileProcessor processor; // Member variable of type FileProcessor
+
+    void SelectFile(wxString& target, const wxString& message, const wxString& wildcard);
+    void OnSelectFiles(wxCommandEvent& event);
+    void OnProcessFile(wxCommandEvent& event);
+    void AzideRename(wxCommandEvent& event);
+    void OnRunAndReset(wxCommandEvent& event);
+    void OnOrientMolecule(wxCommandEvent& event);
+
+    wxDECLARE_EVENT_TABLE();
+};
+
+// Event table for MyFrame
+wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
+    EVT_BUTTON(1001, MyFrame::OnSelectFiles)
+    EVT_BUTTON(1002, MyFrame::OnProcessFile)
+    EVT_BUTTON(1003, MyFrame::AzideRename)
+    EVT_BUTTON(1004, MyFrame::OnRunAndReset)
+    EVT_BUTTON(1005, MyFrame::OnOrientMolecule)
+wxEND_EVENT_TABLE()
+
+MyFrame::MyFrame(const wxString& title)
+    : wxFrame(NULL, wxID_ANY, title),
+      statusText(new wxTextCtrl(this, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, wxTE_MULTILINE)),
+      processor("IC_table_noCGENFF.cpp") { // Initialize FileProcessor with the file path
+    // Create buttons
+    wxButton* selectFilesButton = new wxButton(this, 1001, "Select PDB and STR Files");
+    wxButton* processFileButton = new wxButton(this, 1002, "Process Topology");
+    wxButton* renameAzideButton = new wxButton(this, 1003, "Rename Azide");
+    wxButton* runAndResetButton = new wxButton(this, 1004, "Create Topology Entry");
+    wxButton* orientMoleculeButton = new wxButton(this, 1005, "Move Molecule To Binding Site");
+
+
+    // Create a sizer to arrange the buttons and text control
+    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
+    sizer->Add(selectFilesButton, 0, wxALL | wxCENTER, 5);
+    sizer->Add(processFileButton, 0, wxALL | wxCENTER, 5);
+    sizer->Add(renameAzideButton, 0, wxALL | wxCENTER, 5);
+    sizer->Add(runAndResetButton, 0, wxALL | wxCENTER, 5);
+    sizer->Add(orientMoleculeButton, 0, wxALL | wxCENTER, 5);
+    sizer->Add(statusText, 1, wxEXPAND | wxALL, 5);
+    SetSizer(sizer);
+}
+
+// SelectFile function definition
+void MyFrame::SelectFile(wxString& target, const wxString& message, const wxString& wildcard) {
+    wxFileDialog openFileDialog(this, message, "", "", wildcard, wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (openFileDialog.ShowModal() == wxID_CANCEL) return;
+    target = openFileDialog.GetPath();
+    statusText->AppendText("Selected file: " + target + "\n");
+}
+
+// OnSelectFiles function definition
+void MyFrame::OnSelectFiles(wxCommandEvent& event) {
+    // Select the PDB file
+    SelectFile(pdbFilePath, _("Select PDB file"), "PDB files (*.pdb)|*.pdb");
+
+    // Select the STR file
+    SelectFile(strFilePath, _("Select STR file"), "STR files (*.str)|*.str");
+
+    // Optionally, you can add some logic here to handle the selected files
+    if (!pdbFilePath.empty() && !strFilePath.empty()) {
+        statusText->AppendText("Both files selected successfully.\n");
+    } else {
+        statusText->AppendText("File selection incomplete.\n");
+    }
+}
+
+void MyFrame::OnProcessFile(wxCommandEvent& event) {
+    if (pdbFilePath.IsEmpty() || strFilePath.IsEmpty()) {
+        statusText->AppendText("Error: Please select both PDB and STR files.\n");
+        return;
+    }
+
+    bool success = processor.ProcessFile(std::string(pdbFilePath.mb_str()), 
+                                         std::string(strFilePath.mb_str()));
+
+    if (success) {
+        statusText->AppendText("Files processed successfully.\n");
+    } else {
+        statusText->AppendText("File processing failed.\n");
+    }
+}
+
+void MyFrame::AzideRename(wxCommandEvent& event) {
+   // Select the PDB file
+    SelectFile(pyFilePath, _("Select Python file"), "Python files (*.py)|*.py");
+
+    // Construct the command to run the Python script
+    wxString command = "python " + pyFilePath;
+    int result = system(command.mb_str());
+
+    if (result == 0) {
+        statusText->AppendText("Python script executed successfully.\n");
+    } else {
+        statusText->AppendText("Error executing Python script.\n");
+    }
+}
+
+void MyFrame::OnRunAndReset(wxCommandEvent& event) { 
+    system("g++ -std=c++11 IC_table_noCGENFF.cpp -o IC_table"); // compile IC_table.cpp
+    system("./IC_table"); // Run Patch_orient_QB.py
+    processor.ResetFile(); // Reset the file after execution
+    processor.ResetPythonFile(); // Reset the file after execution
+    }
+
+// MyApp class definition
+class MyApp : public wxApp {
+public:
+    virtual bool OnInit() {
+        MyFrame* frame = new MyFrame("File Selector");
+        frame->Show(true);
+        return true;
+    }
+};
+
+void MyFrame::OnOrientMolecule(wxCommandEvent& event) {
+    system("Python3 chem_orient.py"); // Run chem_orient.py
+ }
+
+// wxIMPLEMENT_APP macro must be placed at the global scope
+wxIMPLEMENT_APP(MyApp);
