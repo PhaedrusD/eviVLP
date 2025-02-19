@@ -1,4 +1,4 @@
-import numpy as np
+import numpy as np 
 
 def load_pdb_coordinates(pdb_file):
     """Load atomic coordinates and other data from a PDB file."""
