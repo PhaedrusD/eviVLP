@@ -521,7 +521,7 @@ void MyFrame::OnRunRenaming(wxCommandEvent& event)
         return;
     }
     
-    statusText->AppendText("Running ./IC_table command...\n");
+    statusText->AppendText("Running ./IC_table_one command...\n");
     
     wxString icTableCommand = "./IC_table";
     int icResult = system(icTableCommand.mb_str());
