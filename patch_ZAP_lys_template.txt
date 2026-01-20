@@ -1,0 +1,13 @@
+PRES ZAP              0.000 ! ***** will change this
+GROUP
+ATOM 1SG  SG311 -0.232 !
+ATOM 1CB  CG321 -0.102 !   
+ATOM 1CA  CG311  0.074 !
+GROUP
+2t**1
+2t**2
+2t**3
+DELETE ATOM 1HG1
+DELETE ATOM 2t*4
+DELETE ATOM 2t*5
+BOND 1SG  2t*1
