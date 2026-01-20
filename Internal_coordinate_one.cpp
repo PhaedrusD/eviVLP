@@ -208,14 +208,13 @@ void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream
     out << "END" << std::endl;
 }
 
-
 // Function to insert topology information into a PDB file
 void insertTopologyInfo(const string& pdbFilename, const vector<ResidueInfo>& topologyInfo, const Atom atoms[], int numAtoms) {
     ifstream pdbFile(pdbFilename);    // Open original PDB file for reading
     ofstream tempFile("temp.pdb");    // Create temporary file for writing
-
+ 
     string line;  // String to store each line of the file
-
+ 
     // Copy lines from original PDB file until "END" is found
     while (getline(pdbFile, line)) {
         if (line.find("END") != string::npos) {
@@ -223,37 +222,39 @@ void insertTopologyInfo(const string& pdbFilename, const vector<ResidueInfo>& to
         }
         tempFile << line << endl;  // Write line to temporary file
     }
+    
     // Insert topology information into the temporary file
     for (const auto& info : topologyInfo) {
         tempFile << info.line << endl;  // Write topology information line by line
     }
-
+    
     // Write the internal coordinate table to the temporary file
     writeInternalCoordinateTable(atoms, numAtoms, tempFile);
-
+ 
     // Write the remaining lines from the original PDB file
     while (getline(pdbFile, line)) {
         tempFile << line << endl;  // Write remaining lines to temporary file
     }
-
+ 
     pdbFile.close();    // Close the original PDB file
     tempFile.close();    // Close the temporary file
-
+ 
     // Rename the temporary file to replace the original PDB file
     if (rename("temp.pdb", pdbFilename.c_str()) != 0) {
         cerr << "Error renaming temporary file." << endl;  // Display error message if renaming fails
     }
 }
 
+//Run using: g++ -std=c++11 -o IC_table IC_table_fixed.cpp
 // Main function
 int main() {
-    std::string residueFilename = "ori_priority_allh.str";  // File containing topology information
-    string pdbFilename = "top_all27_prot_na_LYS.inp";  // Original PDB file name
+    std::string residueFilename = "one.str";  // File containing topology information
+    string pdbFilename = "top_all36_cgenff_CBD.rtf";  // Original PDB file name
 
     Atom atoms[SIZE];  // Array to store atom data
 
     // Read atom data from PDB file
-    int numAtoms = readData("ori_priority_allh.pdb", atoms);
+    int numAtoms = readData("one.pdb", atoms);
     std::cout << "Number of atoms read: " << numAtoms << std::endl;
 
     // Read topology information from file
