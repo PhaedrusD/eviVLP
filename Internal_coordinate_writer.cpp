@@ -162,7 +162,7 @@ double dihedral(const Atom& atom1, const Atom& atom2, const Atom& atom3, const A
     double phiRad = acos(cosAngle);
 
     // Determine the sign of phi based on the sign of signDot
-    double signDot = normal1[0] * vec3[0] + normal1[1] * vec3[1] + normal1[2] * vec3[2];
+    double signDot = normal1[0] * vec4[0] + normal1[1] * vec4[1] + normal1[2] * vec4[2];
     double phiDeg;
     if (signDot <= 0) {
         phiDeg = phiRad * 180.0 / M_PI;
@@ -179,22 +179,24 @@ double dihedral(const Atom& atom1, const Atom& atom2, const Atom& atom3, const A
 void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream& out) {
     // Loop through combinations of four atoms to calculate internal coordinates
     for (int i = 0; i < numAtoms - 3; ++i) {
-        for (int j = i + 1; j < numAtoms - 2; ++j) {
-            for (int k = j + 1; k < numAtoms - 1; ++k) {
-                for (int l = k + 1; l < numAtoms; ++l) {
+        for (int j = 0; j < numAtoms - 2; ++j) {
+            for (int k = 0; k < numAtoms - 1; ++k) {
+                for (int l = 0; l < numAtoms; ++l) {
                     // Calculate distances and angles
                     double distAB = Distance(atoms[i], atoms[j]);
                     double angleABC = Angle(atoms[i], atoms[j], atoms[k]);
                     double dihedralABCD = dihedral(atoms[i], atoms[j], atoms[k], atoms[l]);
                     double angleBCD = Angle(atoms[j], atoms[k], atoms[l]);
                     double distCD = Distance(atoms[k], atoms[l]);
+                    double distBC = Distance(atoms[j], atoms[k]);
 
                     // Debug prints
                     std::cout << "distAB: " << distAB << " angleABC: " << angleABC << " dihedralABCD: " << dihedralABCD << " angleBCD: " << angleBCD << " distCD: " << distCD << std::endl;
 
 
                     // Check if distances are less than or equal to 3
-                    if (distAB <= 2.0 && distCD <= 2.0) {
+                    if (distAB < 2.1 && distBC < 2.1 && distCD < 2.1 && distAB * distBC * distCD != 0 && !std::isnan(angleABC) && 
+    !std::isnan(dihedralABCD) && !std::isnan(angleBCD)) {
                         // Write internal coordinate table entry to output stream
                         out << "IC " << atoms[i].type << " " << atoms[j].type << " " << atoms[k].type << " " << atoms[l].type << "  " << distAB << " " << angleABC << "  " << dihedralABCD << " " << angleBCD << "  " << distCD << std::endl;
                     }
@@ -206,14 +208,13 @@ void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream
     out << "END" << std::endl;
 }
 
-
 // Function to insert topology information into a PDB file
 void insertTopologyInfo(const string& pdbFilename, const vector<ResidueInfo>& topologyInfo, const Atom atoms[], int numAtoms) {
     ifstream pdbFile(pdbFilename);    // Open original PDB file for reading
     ofstream tempFile("temp.pdb");    // Create temporary file for writing
-
+ 
     string line;  // String to store each line of the file
-
+ 
     // Copy lines from original PDB file until "END" is found
     while (getline(pdbFile, line)) {
         if (line.find("END") != string::npos) {
@@ -221,37 +222,39 @@ void insertTopologyInfo(const string& pdbFilename, const vector<ResidueInfo>& to
         }
         tempFile << line << endl;  // Write line to temporary file
     }
+    
     // Insert topology information into the temporary file
     for (const auto& info : topologyInfo) {
         tempFile << info.line << endl;  // Write topology information line by line
     }
-
+    
     // Write the internal coordinate table to the temporary file
     writeInternalCoordinateTable(atoms, numAtoms, tempFile);
-
+ 
     // Write the remaining lines from the original PDB file
     while (getline(pdbFile, line)) {
         tempFile << line << endl;  // Write remaining lines to temporary file
     }
-
+ 
     pdbFile.close();    // Close the original PDB file
     tempFile.close();    // Close the temporary file
-
+ 
     // Rename the temporary file to replace the original PDB file
     if (rename("temp.pdb", pdbFilename.c_str()) != 0) {
         cerr << "Error renaming temporary file." << endl;  // Display error message if renaming fails
     }
 }
 
+//Run using: g++ -std=c++11 -o IC_table IC_table_fixed.cpp
 // Main function
 int main() {
-    std::string residueFilename = "*****.str";  // File containing topology information
-    string pdbFilename = "topology_IC.inp";  // Original PDB file name
+    std::string residueFilename = "any.str";  // File containing topology information
+    string pdbFilename = "topology.rtf";  // Original PDB file name
 
     Atom atoms[SIZE];  // Array to store atom data
 
     // Read atom data from PDB file
-    int numAtoms = readData("*****.pdb", atoms);
+    int numAtoms = readData("any.pdb", atoms);
     std::cout << "Number of atoms read: " << numAtoms << std::endl;
 
     // Read topology information from file
