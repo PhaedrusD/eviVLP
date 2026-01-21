@@ -87,16 +87,17 @@ def main():
     parser = PDBParser(PERMISSIVE=True, QUIET=True)
 
     # Process structure A
-    data_a = parser.get_structure("test_a", "/Users/carydarwin/eviVLP/patch_P2.pdb")
+    data_a = parser.get_structure("test_a", "/Users/carydarwin/eviVLP/GUI/fix_a.pdb")
     process_protein(data_a, "/Users/carydarwin/eviVLP/matrix.txt", "QB_A")
 
     # Process structure B
-    data_b = parser.get_structure("test_b", "/Users/carydarwin/eviVLP/fix_b.pdb")
+    data_b = parser.get_structure("test_b", "/Users/carydarwin/eviVLP/GUI/fix_b.pdb")
     process_protein(data_b, "/Users/carydarwin/eviVLP/matrix.txt", "QB_B")
 
     # Process structure C
-    data_c = parser.get_structure("test_c", "/Users/carydarwin/eviVLP/fix_c.pdb")
+    data_c = parser.get_structure("test_c", "/Users/carydarwin/eviVLP/GUI/fix_c.pdb")
     process_protein(data_c, "/Users/carydarwin/eviVLP/matrix.txt", "QB_C")
+
 
 if __name__ == "__main__":
     main()
