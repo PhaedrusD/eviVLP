@@ -1,4 +1,3 @@
-cat > ~/eviVLP-repo/README.md << 'EOF'
 # eviVLP
 
 A toolkit for visualizing and preparing chemically and genetically modified virus-like particles (VLPs) for molecular dynamics simulation.
