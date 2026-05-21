@@ -35,7 +35,7 @@ Each project contains:
 
 ## CGenFF parameterization
 
-Small molecules added to a VLP are parameterized using the CHARMM General Force Field (CGenFF), which assigns atom types, partial charges, and bonded/non-bonded parameters by analogy to chemically similar fragments in its training set. The CGenFF program reads a MOL2-format structure and produces a CHARMM-compatible stream (STR) file containing the residue topology and any parameters not already present in the standard CGenFF release.
+Small molecules added to a VLP are parameterized using the CHARMM General Force Field (CGenFF), the CHARMM family's parameter set for non-polymer organic molecules. CGenFF assigns atom types, partial charges, and bonded/non-bonded parameters from its primary library — derived from QM and condensed-phase data and continuously expanded as new fragments are parameterized — and from analogy-based assignments (with penalty scores) where direct parameters are not yet available. The CGenFF program reads a MOL2-format structure and produces a CHARMM-compatible stream (STR) file containing the residue topology together with any parameters not already in the current CGenFF release. 
 
 eviVLP automates the structural preparation and bookkeeping around this step. After the user supplies the modifying small molecule, the program converts it to MOL2 format with proper atom typing, then proceeds along one of two paths depending on the host operating system:
 
