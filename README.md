@@ -44,10 +44,6 @@ eviVLP automates the structural preparation and bookkeeping around this step. Af
 
 Both paths produce equivalent topology and parameter outputs. The Linux path is faster and fully automated; the web path requires a brief manual step but does not require local installation of CGenFF.
 
-## Limitations
-
-For case study 2,the original publication (Brown, Fiedler, Finn, Biochemistry 2009) describes a generic 8-residue linker between the Qβ coat protein C-terminus and the Z domain N-terminus but does not disclose the linker amino acid sequence. For this case study we assume a (G₄S)G₃ flexible linker, consistent with common fusion-construct design practice from that era. Substituting an alternative 8-residue linker does not affect the assembly workflow demonstrated here.
-
 ## Status
 
 In active development as part of a PhD dissertation. A manuscript describing the software and its application to VLP–small molecule conjugates is in preparation.
