@@ -1,0 +1,40 @@
+# Simulation outputs (large binary data) — block by default
+*.dcd
+*.psf
+*.pdb
+*.xtc
+*.trr
+*.tga
+*.xcf
+
+# Exceptions: allow PDBs in data/ and case study inputs/
+!chemical_modification/data/*.pdb
+!genetic_modification/data/*.pdb
+!case_studies/**/inputs/*.pdb
+
+# Compiled binaries
+GUI
+IC_table
+IC_NPC
+IC_naa
+IC_ntrm
+IC_ntrm_NPC
+IC_table_BBQ
+FileProcessorGUI
+a.out
+*.o
+*.exe
+*.dSYM/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+
+# Editor / OS metadata
+.DS_Store
+.vscode/
+
+# Backups
+*~
+*.bak
