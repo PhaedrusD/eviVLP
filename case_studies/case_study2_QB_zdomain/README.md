@@ -23,6 +23,10 @@ The Qβ coat protein template is not duplicated here; the GUI reads it from `../
 4. Save the predicted structure as `2SPZ_P8.pdb` (or equivalent name) in this folder. Inspect the pLDDT scores around the linker — they will be low (~30–50), which is expected for a flexible peptide and not a problem for the downstream workflow.
 5. Run the genetic modification GUI with `2SPZ_P8.pdb` as the protein insert and select Qβ as the capsid type. Set the number of fusion proteins to match the experimental condition being modeled (Brown et al. report ~6, ~20, or ~33 per particle depending on growth conditions).
 
+## Scientific Record
+
+Predictions in this case study were generated with AlphaFold2/ColabFold v1.6.1 on 6/11/26
+
 ## Limitations and assumptions
 
 The original publication does not disclose the linker amino acid sequence beyond stating that it is an "octapeptide spacer." It is named CP8Z, perhaps it is **(Pro)₈** — a rigid, extended linker — based on the desire to project the Z domain away from the capsid surface for IgG binding. We preferred a flexible linker such as (G₄S)G₃ and it does not affect the downstream assembly workflow demonstrated here, only the predicted geometry of the unfused Z–linker–coat protein structure. Anyone reproducing this work with a definitive linker sequence (e.g., obtained from the corresponding author or the deposited pCCP8Z plasmid) can substitute that sequence at step 2 without other changes to the procedure. 
