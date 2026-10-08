@@ -403,56 +403,113 @@ std::string FileProcessor::GetAminoAcidAbbrev(const std::string& aminoAcid) {
     return "";
 }
 
+
+// TMV coat-protein templates, named for the residues they mark as NAA.
+// Keeping the descriptive names (rather than tmv_<abbrev>.pdb) documents which
+// sites each file modifies; the GUI resolves the name from the selection.
+std::string FileProcessor::GetTmvCoatProtein(const std::string& abbrev) {
+    if (abbrev == "tyr") return "tmv_Y139.pdb";      // Tyr139
+    if (abbrev == "lys") return "tmv_K53_K68.pdb";   // Lys53 + Lys68
+    return "";                                        // no TMV template for this residue
+}
+
 bool FileProcessor::ProcessPgnFile(const std::string& aminoAcid) {
     std::string abbrev = GetAminoAcidAbbrev(aminoAcid);
     if (abbrev.empty()) {
         std::cerr << "Invalid amino acid for PGN processing: " << aminoAcid << "\n";
         return false;
     }
-    
-    // Read the template
-    std::ifstream templateFile("fix_a_template.pgn");
-    if (!templateFile.is_open()) {
-        std::cerr << "Failed to open fix_a_template.pgn\n";
-        return false;
+
+    // N-terminus (NPC) residue was built in this run if ntrm_clean.str exists.
+    // Residue 1 of the coat protein is then mutated to NPC and the default
+    // NTER patch suppressed; otherwise the slot is left empty.
+    std::string ntermSlot;
+    {
+        std::ifstream probe("ntrm_clean.str");
+        if (probe.is_open()) ntermSlot = "; first NONE; mutate 1 NPC";
     }
-    
-    std::ostringstream buffer;
-    buffer << templateFile.rdbuf();
-    std::string content = buffer.str();
-    templateFile.close();
-    
-    // Replace all {{AMINO_ACID}} with the abbreviation
-    std::string placeholder = "{{AMINO_ACID}}";
-    size_t pos = 0;
-    int count = 0;
-    while ((pos = content.find(placeholder, pos)) != std::string::npos) {
-        content.replace(pos, placeholder.length(), abbrev);
-        pos += abbrev.length();
-        count++;
+    std::cout << "N-terminus slot: '" << ntermSlot << "'\n";
+
+    for (const char* x : {"a", "b", "c"}) {
+        std::string templateName = std::string("fix_") + x + "_template.pgn";
+        std::string targetName   = std::string("fix_") + x + ".pgn";
+
+        std::ifstream templateFile(templateName);
+        if (!templateFile.is_open()) {
+            std::cerr << "Failed to open " << templateName << "\n";
+            return false;
+        }
+        std::ostringstream buffer;
+        buffer << templateFile.rdbuf();
+        std::string content = buffer.str();
+        templateFile.close();
+
+        auto replaceAll = [&content](const std::string& from, const std::string& to) {
+            size_t pos = 0; int count = 0;
+            while ((pos = content.find(from, pos)) != std::string::npos) {
+                content.replace(pos, from.length(), to);
+                pos += to.length(); count++;
+            }
+            return count;
+        };
+        int n1 = replaceAll("{{AMINO_ACID}}", abbrev);
+        int n2 = replaceAll("{{NTERM}}", ntermSlot);
+        std::cout << targetName << ": replaced " << n1 << " {{AMINO_ACID}}, " << n2 << " {{NTERM}}\n";
+
+        std::ofstream outFile(targetName);
+        if (!outFile.is_open()) {
+            std::cerr << "Failed to write " << targetName << "\n";
+            return false;
+        }
+        outFile << content;
     }
-    
-    std::cout << "Replaced " << count << " occurrences of {{AMINO_ACID}} with " << abbrev << "\n";
-    
-    // Write the working copy
-    std::ofstream outFile("fix_a.pgn");
-    if (!outFile.is_open()) {
-        std::cerr << "Failed to write fix_a.pgn\n";
-        return false;
+
+    // --- TMV monomer script (same slots, one coat-protein file) ---
+    {
+        std::string coat = GetTmvCoatProtein(abbrev);
+        std::ifstream tmvTemplate("TMV_naa_template.pgn");
+        if (!tmvTemplate.is_open()) {
+            std::cerr << "Failed to open TMV_naa_template.pgn\n";
+        } else if (coat.empty()) {
+            std::cout << "No TMV coat-protein template for '" << abbrev
+                      << "'; TMV_naa.pgn not written.\n";
+        } else {
+            std::ostringstream tb; tb << tmvTemplate.rdbuf();
+            std::string tc = tb.str();
+            auto sub = [&tc](const std::string& from, const std::string& to) {
+                size_t pos = 0;
+                while ((pos = tc.find(from, pos)) != std::string::npos) {
+                    tc.replace(pos, from.length(), to); pos += to.length();
+                }
+            };
+            sub("{{COAT_PDB}}", coat);
+            sub("{{NTERM}}", ntermSlot);
+            std::ofstream out("TMV_naa.pgn");
+            if (out.is_open()) {
+                out << tc;
+                std::cout << "TMV_naa.pgn written for " << coat << "\n";
+            }
+        }
     }
-    
-    outFile << content;
-    std::cout << "Successfully generated fix_a.pgn for " << aminoAcid << "\n";
+
     return true;
 }
 
 void FileProcessor::ResetPgnFile() {
-    std::ifstream templateFile("fix_a_template.pgn");
-    if (!templateFile.is_open()) {
-        std::cerr << "Failed to open fix_a_template.pgn\n";
-        return;
+    for (const char* x : {"a", "b", "c"}) {
+        std::string templateName = std::string("fix_") + x + "_template.pgn";
+        std::string targetName   = std::string("fix_") + x + ".pgn";
+        std::ifstream templateFile(templateName);
+        if (!templateFile.is_open()) {
+            std::cerr << "Failed to open " << templateName << "\n";
+            continue;
+        }
+        std::ofstream targetFile(targetName);
+        targetFile << templateFile.rdbuf();
     }
-    std::ofstream targetFile("fix_a.pgn");
-    targetFile << templateFile.rdbuf();
-    std::cout << "Reset fix_a.pgn from template\n";
+    {
+        std::ifstream t("TMV_naa_template.pgn");
+        if (t.is_open()) { std::ofstream o("TMV_naa.pgn"); o << t.rdbuf(); }
+    }
+    std::cout << "Reset fix_a/b/c.pgn and TMV_naa.pgn from templates\n";
 }

@@ -182,6 +182,13 @@ void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream
         for (int j = 0; j < numAtoms - 2; ++j) {
             for (int k = 0; k < numAtoms - 1; ++k) {
                 for (int l = 0; l < numAtoms; ++l) {
+                    // Skip degenerate quadruples: psfgen's guesscoord takes the
+                    // FIRST satisfiable IC for an atom, and an entry with a repeated
+                    // atom (e.g. "IC C1 O1 C1 H16") needs fewer known atoms than the
+                    // correct one, so it wins and places the atom from a 0-degree
+                    // frame -> garbage coordinates. All four must be distinct.
+                    if (i == j || i == k || i == l || j == k || j == l || k == l) continue;
+
                     // Calculate distances and angles
                     double distAB = Distance(atoms[i], atoms[j]);
                     double angleABC = Angle(atoms[i], atoms[j], atoms[k]);
@@ -191,7 +198,7 @@ void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream
                     double distBC = Distance(atoms[j], atoms[k]);
 
                     // Debug prints
-                    std::cout << "distAB: " << distAB << " angleABC: " << angleABC << " dihedralABCD: " << dihedralABCD << " angleBCD: " << angleBCD << " distCD: " << distCD << std::endl;
+                    // std::cout << "distAB: " << distAB << " angleABC: " << angleABC << " dihedralABCD: " << dihedralABCD << " angleBCD: " << angleBCD << " distCD: " << distCD << std::endl;
 
 
                     // Check if distances are less than or equal to 3
@@ -205,7 +212,7 @@ void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream
         }
     }
     // Add an additional line at the end
-    out << "IC -C   CA   *N   HN    1.3482 123.5700  180.0000 115.1100  0.9988" << std::endl;
+    out << "IC -C   CA   *N   HN1   1.3482 123.5700  180.0000 115.1100  0.9988" << std::endl;
     out << "IC -C   N    CA   C     1.3482 123.5700  180.0000 107.2900  1.5187" << std::endl;
     out << "IC N    CA   C    +N    1.4504 107.2900  180.0000 117.2700  1.3478" << std::endl;
     out << "IC +N   CA   *C   O     1.3478 117.2700  180.0000 120.7900  1.2277" << std::endl;

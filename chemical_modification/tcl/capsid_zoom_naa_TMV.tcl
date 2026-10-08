@@ -20,7 +20,7 @@ mol addrep top
 
 mol representation CPK
 mol color Name
-mol selection "segid U1 and resname NAA"
+mol selection "segid U1 and resname NAA NPC"
 mol material Opaque
 mol addrep top
 

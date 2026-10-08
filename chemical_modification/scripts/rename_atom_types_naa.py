@@ -6,7 +6,7 @@ Generic script to rename CGenFF atom types to CHARMM36 protein types
 in the NAA .str file. Works for any amino acid and any incoming drug.
 
 Usage: python3 rename_atom_types_naa.py <amino_acid> [str_file]
-  amino_acid: lys, cys, tyr, ntrm
+  amino_acid: lys, cys, tyr, ntrm (Ala N-term), ntrm_ser (Ser N-term)
   str_file:   defaults to naa_clean.str (or ntrm_clean.str for ntrm)
 
 Algorithm:
@@ -22,7 +22,57 @@ Algorithm:
 
 import re
 import sys
+import os
 from itertools import product
+
+C36_PRM = 'par_all36m_prot.prm'
+
+
+def load_c36_params(prm_file=C36_PRM):
+    """Set of (section, types-tuple) present in the CHARMM36 protein parameter file.
+    Angles/dihedrals/impropers are stored in both directions; dihedral wildcards kept as 'X'."""
+    keys = set()
+    if not os.path.exists(prm_file):
+        print(f"  NOTE: {prm_file} not found - all-protein parameter lines will be KEPT, not dropped")
+        return None
+    section = None
+    for line in open(prm_file):
+        s = line.split('!')[0].strip()
+        if not s:
+            continue
+        head = s.split()[0].upper()
+        if head in ('BONDS', 'ANGLES', 'DIHEDRALS', 'IMPROPERS', 'IMPROPER', 'CMAP', 'NONBONDED', 'NBFIX', 'HBOND', 'END'):
+            section = {'IMPROPER': 'IMPROPERS'}.get(head, head)
+            continue
+        n = {'BONDS': 2, 'ANGLES': 3, 'DIHEDRALS': 4, 'IMPROPERS': 4}.get(section)
+        if not n:
+            continue
+        parts = s.split()
+        if len(parts) < n + 1:
+            continue
+        t = tuple(parts[:n])
+        keys.add((section, t)); keys.add((section, tuple(reversed(t))))
+    return keys
+
+
+def c36_has(c36, section, types):
+    """True if CHARMM36 defines this parameter (dihedral wildcards X honoured)."""
+    if c36 is None:
+        return False
+    t = tuple(types)
+    if (section, t) in c36:
+        return True
+    if section == 'DIHEDRALS':
+        for a in ('X', t[0]):
+            for d in ('X', t[3]):
+                if (section, (a, t[1], t[2], d)) in c36:
+                    return True
+    if section == 'IMPROPERS':
+        for b in ('X', t[1]):
+            for c in ('X', t[2]):
+                if (section, (t[0], b, c, t[3])) in c36:
+                    return True
+    return False
 
 # ============================================================
 # Per-amino-acid mappings: atom_name -> CHARMM36_type
@@ -36,14 +86,14 @@ AMINO_ACID_MAPS = {
         'CA':  'CT1',
         'C':   'C',
         'O':   'O',
-        'H':   'HN',
+        'H':   'H',    # backbone amide H: CHARMM36 TYPE is H (HN is only the atom name)
         'HA':  'HB1',
         # Side chain
         'CB':  'CT2',
         'CG':  'CT2',
         'CD':  'CT2',
         'CE':  'CT2',
-        'NZ':  'NH2',
+        'NZ':  'NH1',  # acylated NZ = secondary amide N, as in CHARMM36 ALY (acetyl-lysine)
         'HZ':  'H',
         'HB1': 'HB2',
         'HB2': 'HB2',
@@ -66,7 +116,7 @@ AMINO_ACID_MAPS = {
         'CA':  'CT1',
         'C':   'C',
         'O':   'O',
-        'H':   'HN',
+        'H':   'H',    # backbone amide H: CHARMM36 TYPE is H (HN is only the atom name)
         'HA':  'HB1',
         # Side chain
         'CB':  'CT2',
@@ -86,7 +136,7 @@ AMINO_ACID_MAPS = {
         'CA':  'CT1',
         'C':   'C',
         'O':   'O',
-        'H':   'HN',
+        'H':   'H',    # backbone amide H: CHARMM36 TYPE is H (HN is only the atom name)
         'HA':  'HB1',
         # Side chain
         'CB':  'CT2',
@@ -110,6 +160,7 @@ AMINO_ACID_MAPS = {
         'HX1': 'H',
         'HX2': 'H',
     },
+    # N-terminus, alanine model (Qbeta: residue 1 is Ala; RESI BBQ)
     'ntrm': {
         'N':   'NH1',
         'CA':  'CT1',
@@ -120,6 +171,21 @@ AMINO_ACID_MAPS = {
         'HB1': 'HA3',
         'HB2': 'HA3',
         'HB3': 'HA3',
+        'HN1': 'H',
+    },
+    # N-terminus, serine model (TMV: residue 1 is Ser; RESI BBT).
+    # Types follow RESI SER in top_all36_prot.rtf, with the amide H typed H.
+    'ntrm_ser': {
+        'N':   'NH1',
+        'CA':  'CT1',
+        'C':   'C',
+        'O':   'O',
+        'HA':  'HB1',
+        'CB':  'CT2',
+        'HB1': 'HA2',
+        'HB2': 'HA2',
+        'OG':  'OH1',
+        'HG1': 'H',
         'HN1': 'H',
     },
 }
@@ -298,7 +364,7 @@ def rename_types_in_param_line(line, type_fields, new_types):
     return new_line
 
 
-def process_parameters(lines, cgenff_to_charmm, ambiguous_types, protein_types_after):
+def process_parameters(lines, cgenff_to_charmm, ambiguous_types, protein_types_after, c36=None):
     """
     Process parameter sections:
     - Rename unambiguous protein types
@@ -315,6 +381,7 @@ def process_parameters(lines, cgenff_to_charmm, ambiguous_types, protein_types_a
     extracted_params = {s: [] for s in param_sections}
     removed_count = 0
     added_count = 0
+    kept_gap_count = [0]
     
     for line in lines:
         stripped = line.strip()
@@ -357,7 +424,9 @@ def process_parameters(lines, cgenff_to_charmm, ambiguous_types, protein_types_a
         valid_perms = []
         for perm in perms:
             if all(t in protein_types_after for t in perm):
-                continue  # Redundant with CHARMM36
+                if c36_has(c36, current_section, perm):
+                    continue  # Genuinely redundant: CHARMM36 defines it
+                kept_gap_count[0] += 1  # all-protein types but no C36 entry: keep it
             valid_perms.append(perm)
         
         if not valid_perms:
@@ -376,7 +445,8 @@ def process_parameters(lines, cgenff_to_charmm, ambiguous_types, protein_types_a
             extracted_params[current_section].append(extra_line)
             added_count += 1
         
-    print(f"  Parameters: {removed_count} redundant lines removed, {added_count} permutation lines added")
+    print(f"  Parameters: {removed_count} redundant lines removed, {added_count} permutation lines added, "
+          f"{kept_gap_count[0]} all-protein lines kept because CHARMM36 lacks them")
     return new_lines, extracted_params
 
 
@@ -404,8 +474,9 @@ def process_str_file(str_file, protein_atom_map):
     lines = rename_resi_by_name(lines, protein_atom_map)
     
     # Step 4: Process parameter sections
+    c36 = load_c36_params()
     lines, extracted_params = process_parameters(
-        lines, cgenff_to_charmm, ambiguous_types, protein_types_after
+        lines, cgenff_to_charmm, ambiguous_types, protein_types_after, c36
     )
     
     # Write updated .str file
@@ -430,7 +501,7 @@ def main():
         sys.exit(1)
     
     # Default str file based on amino acid
-    if aa == 'ntrm':
+    if aa.startswith('ntrm'):
         default_str = 'ntrm_clean.str'
     else:
         default_str = 'naa_clean.str'

@@ -1,0 +1,19 @@
+# vmd -dispdev text -e patched_tyr.pgn
+package require psfgen
+topology top_all36_cgenff_CBD.rtf
+
+# Build segments
+resetpsf
+segment A {pdb tyr.pdb; first NONE; last NONE}
+coordpdb tyr.pdb A
+segment B {pdb one_aligned.pdb}
+coordpdb one_aligned.pdb B
+patch ZAP A:1 B:1
+
+
+guesscoord
+regenerate angles dihedrals
+writepdb patched.pdb
+writepsf patched.psf  
+
+exit

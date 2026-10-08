@@ -7,8 +7,10 @@ def extract_atom_info(str_file_path):
     
     updated_lines = []
     for line in lines:
-        if line.startswith("RESI") and "*****" in line:
-            line = line.replace("*****", "NAA")
+        if line.startswith("RESI"):
+            parts = line.split()
+            if len(parts) >= 2 and parts[1] != "NAA":
+                line = line.replace(parts[1], "NAA", 1)
         updated_lines.append(line)
     
     with open(str_file_path, 'w') as file:

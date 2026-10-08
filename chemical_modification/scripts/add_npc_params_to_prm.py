@@ -12,8 +12,21 @@ Lines where ALL types are protein-side are redundant and skipped.
 Lines where ALL types are drug-side are CGenFF-internal and skipped.
 """
 
-# CHARMM36 protein-side types (after renaming by rename_atom_types_ntrm.py)
-PROTEIN_TYPES = {'NH1', 'CT1', 'C', 'CT2', 'H', 'HB1', 'HB3', 'O'}
+# CHARMM36 protein-side types, taken from the rename map so the two can never
+# drift. Variant is the N-terminus model used: 'ntrm' (Ala) or 'ntrm_ser' (Ser).
+import sys
+import importlib.util
+
+
+def protein_types(variant='ntrm'):
+    spec = importlib.util.spec_from_file_location('ren', 'rename_atom_types_naa.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return set(mod.AMINO_ACID_MAPS[variant].values())
+
+
+VARIANT = sys.argv[1] if len(sys.argv) > 1 else 'ntrm'
+PROTEIN_TYPES = protein_types(VARIANT)
 
 PARAM_SECTIONS = {'BONDS', 'ANGLES', 'DIHEDRALS', 'IMPROPERS'}
 
@@ -88,7 +101,19 @@ def insert_into_prm(prm_file, cross_params):
     just before the next section header or CMAP/NONBONDED/END.
     """
     with open(prm_file, 'r') as f:
-        lines = f.readlines()
+        raw_lines = f.readlines()
+
+    # Remove blocks this script wrote on a previous run (header .. blank line)
+    lines, skipping, removed = [], False, 0
+    for l in raw_lines:
+        if l.startswith('! === NPC cross-force-field'):
+            skipping = True; removed += 1; continue
+        if skipping:
+            if l.strip() == '': skipping = False
+            continue
+        lines.append(l)
+    if removed:
+        print(f"  Removed {removed} previous NPC block(s) from {prm_file}")
 
     # Find the line indices of each section header and the CMAP line
     section_starts = {}
@@ -155,7 +180,7 @@ def main():
     str_file = 'ntrm_clean.str'
     prm_file = 'par_GUI.prm'
 
-    print(f"Extracting cross-FF parameters from {str_file}...")
+    print(f"Extracting cross-FF parameters from {str_file} (variant {VARIANT}, protein types {sorted(PROTEIN_TYPES)})...")
     cross_params = extract_cross_ff_params(str_file)
 
     for section in ['BONDS', 'ANGLES', 'DIHEDRALS', 'IMPROPERS']:

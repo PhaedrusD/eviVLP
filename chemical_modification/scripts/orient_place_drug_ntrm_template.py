@@ -1,4 +1,5 @@
 import numpy as np
+import sys
 import re
 
 class PDBMolecule:
@@ -106,7 +107,7 @@ def calculate_rotation_matrix(vec1, vec2):
 
 def align_molecules(reference_pdb, one_pdb, output_pdb, 
                    ref_atoms=['C', 'N'], one_atoms=['*T1', '*T3'], 
-                   target_distance=-1.65):
+                   target_distance=-1.35):
     """
     Align test molecule to reference molecule based on specified atom pairs.
     
@@ -193,21 +194,24 @@ def align_molecules(reference_pdb, one_pdb, output_pdb,
 # Example usage
 if __name__ == "__main__":
     try:
-        # Align one.pdb to BBS_QB.pdb with target distance
+        # Align one.pdb to the N-terminus reference (ntrm_ref.pdb) with target distance
         aligned_mol = align_molecules(
-            reference_pdb="BBS_QB.pdb",
+            reference_pdb="ntrm_ref.pdb",
             one_pdb="one.pdb", 
-            output_pdb="one_aligned.pdb",
+            output_pdb="one_aligned_ntrm.pdb",
             ref_atoms=['C', 'N'],
             one_atoms=['*T1', '*T3'],
-            target_distance=-1.65  # Angstroms
+            target_distance=-1.35  # Angstroms (amide C-N; sign = place drug beyond the N)
         )
         
         print("\nAlignment completed successfully!")
         
     except FileNotFoundError as e:
         print(f"Error: Could not find PDB file - {e}")
+        sys.exit(1)
     except ValueError as e:
         print(f"Error: {e}")
+        sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}")
+        sys.exit(1)

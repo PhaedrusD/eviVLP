@@ -37,6 +37,7 @@ private:
                                                 const std::vector<std::string>& deletedAtoms);
     std::vector<std::string> CreateAtomInfoArray(const std::vector<std::string>& bondedAtoms);
     std::string GetAminoAcidAbbrev(const std::string& aminoAcid);
+    std::string GetTmvCoatProtein(const std::string& abbrev);  // abbrev -> tmv_*.pdb
 };
 
 #endif // FILEPROCESSOR_H

@@ -1,77 +1,86 @@
-def process_str_files(pdb_file='ntrm_fixed.pdb', input_file='ntrm.str', output_file='ntrm_clean.str'):
-    try:
-        # Step 1: Get atom indices (1-based) and names containing 'X' from the pdb file
-        print("Step 1: Reading naa.pdb for atom indices containing 'X'...")
-        x_atom_indices = set()
-        x_atom_names_pdb = set()
-        atom_index = 0
-        with open(pdb_file, 'r') as f:
-            for line in f:
-                if line.startswith(('ATOM', 'HETATM')):
-                    atom_index += 1
-                    atom_name = line[12:16].strip()
-                    if 'X' in atom_name:
-                        x_atom_indices.add(atom_index)
-                        x_atom_names_pdb.add(atom_name)
-        
-        print(f"  Found {len(x_atom_indices)} atoms with 'X' at indices: {sorted(x_atom_indices)}")
+#!/usr/bin/env python3
+"""
+noX_psf_ntrm.py
+Remove cap atoms (names containing 'X', e.g. HX) from the N-terminal NAA
+stream file, together with every BOND line that references them.
 
-        # Step 2: Get the corresponding str atom names at those indices
-        print("\nStep 2: Reading naa.str for atom names at those indices...")
-        x_atom_names_str = set()
-        atom_index = 0
-        with open(input_file, 'r') as f:
-            for line in f:
-                if line.startswith('ATOM'):
-                    atom_index += 1
-                    if atom_index in x_atom_indices:
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            x_atom_names_str.add(parts[1])
+Atoms are matched BY NAME, not by position. The earlier index-based version
+silently deleted the wrong atom (drug C1 instead of HX) whenever the PDB and
+the CGenFF .str had different atom counts (e.g. extra HN2/HN3 on the N).
 
-        print(f"  Corresponding str atom names to remove: {x_atom_names_str}")
+Before writing anything, the non-cap atom names in the PDB and the .str are
+compared; if they differ the script stops with exit code 1 so the GUI halts.
+"""
+import sys
 
-        # Step 3: Process str file, skipping flagged ATOM lines and BOND lines referencing them
-        print(f"\nStep 3: Processing {input_file} -> {output_file}...")
-        with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
-            lines_read = 0
-            lines_written = 0
-            lines_removed = 0
-            atom_index = 0
-            
-            for line in infile:
-                lines_read += 1
-                
-                # Fix RESI lines
-                if line.startswith('RESI') and 'naa.pdb' in line:
-                    line = line.replace('naa.pdb', 'NAA')
-                
-                # Skip flagged ATOM lines by index
-                if line.startswith('ATOM'):
-                    atom_index += 1
-                    if atom_index in x_atom_indices:
-                        lines_removed += 1
-                        continue
-                
-                # Skip BOND lines that reference any removed atom name
-                if line.startswith('BOND'):
-                    parts = line.split()
-                    if any(name in x_atom_names_str for name in parts[1:]):
-                        lines_removed += 1
-                        continue
-                
-                outfile.write(line)
-                lines_written += 1
-        
-        print(f"  Lines read: {lines_read}")
-        print(f"  Lines removed: {lines_removed}")
-        print(f"  Lines written to {output_file}: {lines_written}")
-        print(f"\nProcessing complete! Output saved to '{output_file}'")
-        
-    except FileNotFoundError as e:
-        print(f"Error: Could not find file - {e}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+
+def pdb_atom_names(pdb_file):
+    names = []
+    with open(pdb_file) as f:
+        for line in f:
+            if line.startswith(('ATOM', 'HETATM')):
+                names.append(line[12:16].strip())
+    return names
+
+
+def str_atom_names(str_file):
+    names = []
+    with open(str_file) as f:
+        for line in f:
+            if line.startswith('ATOM'):
+                parts = line.split()
+                if len(parts) >= 2:
+                    names.append(parts[1])
+    return names
+
+
+def is_cap(name):
+    return 'X' in name
+
+
+def process_str_files(pdb_file='ntrm_fixed.pdb', input_file='ntrm.str',
+                      output_file='ntrm_clean.str'):
+    pdb_names = pdb_atom_names(pdb_file)
+    str_names = str_atom_names(input_file)
+
+    # --- consistency check -------------------------------------------------
+    pdb_core = {n for n in pdb_names if not is_cap(n)}
+    str_core = {n for n in str_names if not is_cap(n)}
+    only_pdb = sorted(pdb_core - str_core)
+    only_str = sorted(str_core - pdb_core)
+    if only_pdb or only_str:
+        print(f"ERROR: atom names in {pdb_file} and {input_file} do not match.")
+        if only_pdb:
+            print(f"  only in {pdb_file}: {only_pdb}")
+        if only_str:
+            print(f"  only in {input_file}: {only_str}")
+        print("  The .str must come from the same structure as the PDB "
+              "(re-run CGenFF on the current ntrm.mol2).")
+        sys.exit(1)
+
+    cap_names = {n for n in str_names if is_cap(n)}
+    if not cap_names:
+        print(f"Warning: no cap (X) atoms found in {input_file}")
+    print(f"Removing cap atoms by name: {sorted(cap_names)}")
+
+    # --- filter ------------------------------------------------------------
+    removed = written = 0
+    with open(input_file) as fin, open(output_file, 'w') as fout:
+        for line in fin:
+            if line.startswith('RESI') and 'naa.pdb' in line:
+                line = line.replace('naa.pdb', 'NAA')
+            parts = line.split()
+            if line.startswith('ATOM') and len(parts) >= 2 and parts[1] in cap_names:
+                removed += 1
+                continue
+            if line.startswith('BOND') and any(p in cap_names for p in parts[1:]):
+                removed += 1
+                continue
+            fout.write(line)
+            written += 1
+
+    print(f"Lines removed: {removed}; lines written to {output_file}: {written}")
+    print(f"Atoms: {len(str_names)} -> {len(str_names) - len(cap_names)}")
 
 
 if __name__ == "__main__":

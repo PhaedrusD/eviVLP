@@ -1,0 +1,16 @@
+# vmd -dispdev text -e TMV_naa.pgn
+package require psfgen
+topology top_all36_prot.rtf
+topology top_all36_cgenff_CBD.rtf
+pdbalias residue HIS HSE
+pdbalias atom ILE CD1 CD
+
+segment A {pdb {{COAT_PDB}}{{NTERM}}}
+coordpdb {{COAT_PDB}} A
+
+guesscoord
+regenerate angles dihedrals
+guesscoord
+writepdb TMV_naa.pdb
+writepsf TMV_naa.psf
+exit

@@ -1,5 +1,16 @@
+import os
+
+
+def nterm_slot():
+    """'; first NONE; mutate 1 NPC' when this run built an N-terminus residue.
+    Mirrors FileProcessor::ProcessPgnFile so the monomer and capsid agree."""
+    return "; first NONE; mutate 1 NPC" if os.path.exists("ntrm_clean.str") else ""
+
+
 def generate_vmd_script():
     base_dir = "/Users/carydarwin/eviVLP/GUI"
+    slot = nterm_slot()
+    print(f"N-terminus slot: '{slot}'")
     output_file = f"{base_dir}/TMV_all_out.pgn"
     
     # Build the script content
@@ -18,7 +29,7 @@ def generate_vmd_script():
     
     # Segments and coordinates
     for i in range(0, 49):
-        script_content.append(f'segment U{i} {{pdb TMV{i}.pdb}}')
+        script_content.append(f'segment U{i} {{pdb TMV{i}.pdb{slot}}}')
         script_content.append(f'coordpdb TMV{i}.pdb U{i}')
     
     script_content.extend(['', ''])  # Blank lines
