@@ -20,6 +20,8 @@ IC_naa
 IC_ntrm
 IC_ntrm_NPC
 IC_table_BBQ
+IC_table_one
+IC_table_noCGENFF
 FileProcessorGUI
 a.out
 *.o

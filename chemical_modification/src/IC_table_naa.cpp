@@ -2,6 +2,8 @@
 #include <fstream>        // File stream library
 #include <sstream>        // String stream library
 #include <string>         // String library
+#include <map>
+#include <set>
 #include <vector>         // Vector library
 #include <cmath>          // Math functions library
 #include <algorithm>      // Algorithm library
@@ -176,41 +178,107 @@ double dihedral(const Atom& atom1, const Atom& atom2, const Atom& atom3, const A
 
 
 // Function to write internal coordinate table to an output stream
-void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream& out) {
-    // Loop through combinations of four atoms to calculate internal coordinates
-    for (int i = 0; i < numAtoms - 3; ++i) {
-        for (int j = 0; j < numAtoms - 2; ++j) {
-            for (int k = 0; k < numAtoms - 1; ++k) {
-                for (int l = 0; l < numAtoms; ++l) {
-                    // Skip degenerate quadruples: psfgen's guesscoord takes the
-                    // FIRST satisfiable IC for an atom, and an entry with a repeated
-                    // atom (e.g. "IC C1 O1 C1 H16") needs fewer known atoms than the
-                    // correct one, so it wins and places the atom from a 0-degree
-                    // frame -> garbage coordinates. All four must be distinct.
-                    if (i == j || i == k || i == l || j == k || j == l || k == l) continue;
+// readData keeps the raw 4-character PDB name field, so atoms[].type carries
+// padding (" N  ", "HB2 "). Trim only for name lookups; the IC output keeps the
+// padded form so the table stays column-aligned.
+static string trimName(const string& s) {
+    size_t a = s.find_first_not_of(" \t");
+    if (a == string::npos) return "";
+    size_t b = s.find_last_not_of(" \t");
+    return s.substr(a, b - a + 1);
+}
 
-                    // Calculate distances and angles
+// Build an adjacency list from the RESI block's BOND/DOUBLE/TRIPLE lines.
+// An internal coordinate is only well conditioned when its four atoms form a
+// genuine bonded path A-B-C-D. The previous version accepted any quadruple
+// whose consecutive distances were under 2.1 A, which also admits pairs that
+// are close but NOT bonded - two hydrogens on one carbon sit 1.79 A apart, a
+// geminal H...C about 2.08 A - producing frames with ~36 degree angles and an
+// H-H "bond length". psfgen then reports "bad angle" and falls back to a poor
+// guess for that atom.
+static vector<vector<int> > buildAdjacency(const vector<ResidueInfo>& topologyInfo,
+                                           const Atom atoms[], int numAtoms) {
+    // atom name -> index
+    map<string, int> index;
+    for (int i = 0; i < numAtoms; ++i) index[trimName(atoms[i].type)] = i;
+
+    vector<vector<int> > adj(numAtoms);
+    int bonds = 0, unmatched = 0;
+
+    for (size_t n = 0; n < topologyInfo.size(); ++n) {
+        string line = topologyInfo[n].line;
+        size_t bang = line.find('!');
+        if (bang != string::npos) line = line.substr(0, bang);   // drop the comment
+
+        istringstream ss(line);
+        string keyword;
+        if (!(ss >> keyword)) continue;
+        if (keyword != "BOND" && keyword != "DOUBLE" && keyword != "TRIPLE") continue;
+
+        // CHARMM allows several pairs on one line
+        vector<string> names;
+        string tok;
+        while (ss >> tok) names.push_back(tok);
+        for (size_t p = 0; p + 1 < names.size(); p += 2) {
+            const string& a = names[p];
+            const string& b = names[p + 1];
+            // atoms of the neighbouring residue (-C, +N) are not in this list
+            if (index.find(a) == index.end() || index.find(b) == index.end()) {
+                if (a[0] != '-' && a[0] != '+' && b[0] != '-' && b[0] != '+') ++unmatched;
+                continue;
+            }
+            int ia = index[a], ib = index[b];
+            adj[ia].push_back(ib);
+            adj[ib].push_back(ia);
+            ++bonds;
+        }
+    }
+    std::cout << "Adjacency: " << bonds << " intra-residue bonds";
+    if (unmatched) std::cout << " (" << unmatched << " BOND entries named atoms not in the PDB)";
+    std::cout << std::endl;
+    return adj;
+}
+
+void writeInternalCoordinateTable(const Atom atoms[], int numAtoms, std::ostream& out,
+                                  const vector<vector<int> >& adj) {
+    // Walk genuine bonded paths A-B-C-D rather than every quadruple of atoms.
+    // Both directions of each path are emitted, so guesscoord can place either
+    // terminal atom. This is also far cheaper: O(N * degree^3) instead of O(N^4).
+    long emitted = 0;
+    for (int i = 0; i < numAtoms; ++i) {
+        for (size_t jj = 0; jj < adj[i].size(); ++jj) {
+            int j = adj[i][jj];
+            for (size_t kk = 0; kk < adj[j].size(); ++kk) {
+                int k = adj[j][kk];
+                if (k == i) continue;
+                for (size_t ll = 0; ll < adj[k].size(); ++ll) {
+                    int l = adj[k][ll];
+                    if (l == i || l == j) continue;   // no repeated atom in a frame
+
                     double distAB = Distance(atoms[i], atoms[j]);
-                    double angleABC = Angle(atoms[i], atoms[j], atoms[k]);
-                    double dihedralABCD = dihedral(atoms[i], atoms[j], atoms[k], atoms[l]);
-                    double angleBCD = Angle(atoms[j], atoms[k], atoms[l]);
-                    double distCD = Distance(atoms[k], atoms[l]);
                     double distBC = Distance(atoms[j], atoms[k]);
+                    double distCD = Distance(atoms[k], atoms[l]);
+                    double angleABC = Angle(atoms[i], atoms[j], atoms[k]);
+                    double angleBCD = Angle(atoms[j], atoms[k], atoms[l]);
+                    double dihedralABCD = dihedral(atoms[i], atoms[j], atoms[k], atoms[l]);
 
-                    // Debug prints
-                    // std::cout << "distAB: " << distAB << " angleABC: " << angleABC << " dihedralABCD: " << dihedralABCD << " angleBCD: " << angleBCD << " distCD: " << distCD << std::endl;
+                    if (distAB * distBC * distCD == 0) continue;
+                    if (std::isnan(angleABC) || std::isnan(angleBCD) || std::isnan(dihedralABCD)) continue;
+                    // a near-collinear A-B-C or B-C-D leaves the dihedral undefined
+                    if (angleABC < 5.0 || angleABC > 175.0) continue;
+                    if (angleBCD < 5.0 || angleBCD > 175.0) continue;
 
-
-                    // Check if distances are less than or equal to 3
-                    if (distAB < 2.1 && distBC < 2.1 && distCD < 2.1 && distAB * distBC * distCD != 0 && !std::isnan(angleABC) && 
-    !std::isnan(dihedralABCD) && !std::isnan(angleBCD)) {
-                        // Write internal coordinate table entry to output stream
-                        out << "IC " << atoms[i].type << " " << atoms[j].type << " " << atoms[k].type << " " << atoms[l].type << "  " << distAB << " " << angleABC << "  " << dihedralABCD << " " << angleBCD << "  " << distCD << std::endl;
-                    }
+                    out << "IC " << atoms[i].type << " " << atoms[j].type << " "
+                        << atoms[k].type << " " << atoms[l].type << "  "
+                        << distAB << " " << angleABC << "  " << dihedralABCD << " "
+                        << angleBCD << "  " << distCD << std::endl;
+                    ++emitted;
                 }
             }
         }
     }
+    std::cout << "IC table: " << emitted << " bonded-path entries" << std::endl;
+
     // Add an additional line at the end
     out << "IC -C   CA   *N   H     1.3482 123.5700  180.0000 115.1100  0.9988" << std::endl;
     out << "IC -C   N    CA   C     1.3482 123.5700  180.0000 107.2900  1.5187" << std::endl;
@@ -243,8 +311,10 @@ void insertTopologyInfo(const string& pdbFilename, const vector<ResidueInfo>& to
     // Add the required BOND line
     tempFile << "BOND C    +N" << endl;
 
+    vector<vector<int> > adj = buildAdjacency(topologyInfo, atoms, numAtoms);
+
     // Write the internal coordinate table to the temporary file
-    writeInternalCoordinateTable(atoms, numAtoms, tempFile);
+    writeInternalCoordinateTable(atoms, numAtoms, tempFile, adj);
 
     // Write the remaining lines from the original PDB file
     while (getline(pdbFile, line)) {

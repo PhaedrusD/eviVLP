@@ -57199,4 +57199,37 @@ IC N    CA   C    +N    1.4504 107.2900  180.0000 117.2700  1.3478
 IC +N   CA   *C   O     1.3478 117.2700  180.0000 120.7900  1.2277
 IC CA   C    +N   +CA   1.5187 117.2700  180.0000 124.9100  1.4487
 
+RESI BBT            1.000 ! param penalty=  46.000 ; charge penalty=  13.351
+GROUP            ! CHARGE   CH_PENALTY Z   EL   NB NBE RNG1 TYP RNG2 TYP RNG3 TYP
+ATOM N      NG3P3  -0.290 !    3.498   7   N    4  4  
+ATOM CA     CG314   0.177 !   12.971   6   C    4  4  
+ATOM C      CG2O4   0.402 !   13.351   6   C    3  4  
+ATOM O      OG2D1  -0.418 !    4.884   8   O    1  2  
+ATOM HA     HGA1    0.090 !    2.515   1   H    1  1  
+ATOM CB     CG321   0.085 !   10.115   6   C    4  4  
+ATOM HB1    HGA2    0.090 !    0.150   1   H    1  1  
+ATOM HB2    HGA2    0.090 !    0.150   1   H    1  1  
+ATOM OG     OG311  -0.614 !   10.141   8   O    2  2  
+ATOM HG1    HGP1    0.420 !    0.000   1   H    1  1  
+ATOM HN1    HGP2    0.293 !    0.150   1   H    1  1  
+ATOM HN2    HGP2    0.293 !    0.150   1   H    1  1  
+ATOM HN3    HGP2    0.293 !    0.150   1   H    1  1  
+ATOM HX     HGR52   0.089 !    8.749   1   H    1  1  
+               ! TYP INR
+BOND N    CA   ! 1   0
+BOND N    HN1  ! 1   0
+BOND N    HN2  ! 1   0
+BOND N    HN3  ! 1   0
+BOND CA   C    ! 1   0
+BOND CA   HA   ! 1   0
+BOND CA   CB   ! 1   0
+BOND C    O    ! 2   0
+BOND C    HX   ! 1   0
+BOND CB   HB1  ! 1   0
+BOND CB   HB2  ! 1   0
+BOND CB   OG   ! 1   0
+BOND OG   HG1  ! 1   0
+IMPR C      CA     O      HX    
+
+
 END

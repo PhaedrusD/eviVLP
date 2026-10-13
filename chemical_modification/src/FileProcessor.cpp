@@ -408,8 +408,22 @@ std::string FileProcessor::GetAminoAcidAbbrev(const std::string& aminoAcid) {
 // Keeping the descriptive names (rather than tmv_<abbrev>.pdb) documents which
 // sites each file modifies; the GUI resolves the name from the selection.
 std::string FileProcessor::GetTmvCoatProtein(const std::string& abbrev) {
-    if (abbrev == "tyr") return "tmv_Y139.pdb";      // Tyr139
-    if (abbrev == "lys") return "tmv_K53_K68.pdb";   // Lys53 + Lys68
+    if (abbrev == "tyr") return "tmv_Y139.pdb";   // Tyr139 (nTMV, diazonium + CuAAC)
+    // Lysine: the NATIVE sites Lys53 and Lys68 of wild-type TMV (the doxorubicin
+    // sites of Finbloom et al. 2016). Both are marked NAA, so a run conjugates
+    // at both. They keep their crystallographic CG/CD/CE/NZ, so guesscoord
+    // builds only the drug - the side-chain conformation is observed, not
+    // modelled - and residue 158 stays THR, so CTER is applied to an ordinary
+    // residue.
+    //
+    // Case study 1 (kTMV, the T158K single-point mutant of Lumata et al.
+    // JMCB 2024, EDC coupling to the K158 primary amine) is deliberately NOT
+    // the default: it is one specific published construct, it requires a
+    // mutation, residue 158 is the C-terminus so CTER lands on the NAA itself,
+    // and the whole lysine side chain has to be guessed. To reproduce it, put
+    // case_studies/case_study1_TMV_TEMPO/inputs/tmv_K158.pdb beside the GUI and
+    // return that filename here instead.
+    if (abbrev == "lys") return "tmv_K53_K68.pdb";
     return "";                                        // no TMV template for this residue
 }
 

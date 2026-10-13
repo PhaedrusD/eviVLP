@@ -116,6 +116,9 @@ def insert_into_prm(prm_file, cross_params):
         print(f"  Removed {removed} previous NPC block(s) from {prm_file}")
 
     # Find the line indices of each section header and the CMAP line
+    # Hard stops: a block must never be inserted past the non-bonded tail.
+    TAIL = ('CMAP', 'NONBONDED', 'NBFIX', 'HBOND', 'END')
+
     section_starts = {}
     cmap_line = None
 
@@ -123,7 +126,8 @@ def insert_into_prm(prm_file, cross_params):
         stripped = line.strip()
         if stripped in PARAM_SECTIONS:
             section_starts[stripped] = i
-        if stripped == 'CMAP':
+        head = stripped.split()[0].upper() if stripped else ''
+        if head in TAIL and cmap_line is None:
             cmap_line = i
 
     # Determine insertion points: end of each section

@@ -1,158 +1,174 @@
 #!/usr/bin/env python3
 """
-add_naa_params_to_prm.py
+add_naa_params_to_prm.py  <str_file> <amino_acid> [label] [prm_file]
 
-Extracts non-redundant parameters from a renamed .str file and inserts
-them into the correct BONDS, ANGLES, DIHEDRALS, and IMPROPERS sections
-of par_GUI.prm.
+Collect every parameter the simulation needs that is NOT already in a released
+force-field file, and insert it into par_GUI.prm.
 
-Usage: python3 add_naa_params_to_prm.py <str_file> [prm_file]
-  str_file: the renamed .str file (e.g. nad.str, ntrm_clean.str)
-  prm_file: defaults to par_GUI.prm
+A NAMD run loads three parameter files: par_all36m_prot.prm (CHARMM36 protein),
+par_all36_cgenff.prm (released CGenFF), and par_GUI.prm. So par_GUI.prm must
+carry exactly the remainder:
+
+  * novel CGenFF terms for the drug - a CGenFF stream file's parameter section
+    only ever contains terms absent from the released set, so every drug-only
+    line qualifies;
+  * cross-force-field terms at the junction - lines mixing CHARMM36 protein
+    types with CGenFF drug types, which no single force field defines;
+  * all-protein terms that CHARMM36 happens to lack - kept rather than assumed
+    redundant, by checking par_all36m_prot.prm directly.
+
+Protein-side types come from the rename map in rename_atom_types_naa.py, so the
+two cannot drift apart. Blocks written by a previous run under the same label
+are replaced, making the step re-runnable.
 """
-
+import importlib.util
+import os
 import sys
 
-# CHARMM36 protein-side types (after renaming)
-# Parameters where ALL types are in this set are redundant
-PROTEIN_TYPES = {
-    'NH1', 'NH2', 'CT1', 'CT2', 'CT3', 'C', 'O', 'H', 'HN',
-    'HB1', 'HB2', 'HB3', 'HA3', 'HP', 'CA', 'OH1', 'S',
-}
-
 PARAM_SECTIONS = {'BONDS', 'ANGLES', 'DIHEDRALS', 'IMPROPERS'}
+ORDER = ['BONDS', 'ANGLES', 'DIHEDRALS', 'IMPROPERS']
 
 
-def get_num_type_fields(section):
+def _rename_module():
+    spec = importlib.util.spec_from_file_location('ren', 'rename_atom_types_naa.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def n_types(section):
     return {'BONDS': 2, 'ANGLES': 3, 'DIHEDRALS': 4, 'IMPROPERS': 4}.get(section, 0)
 
 
-def extract_params(str_file):
-    """Extract all non-redundant parameters from a .str file."""
-    params = {s: [] for s in PARAM_SECTIONS}
+def extract(str_file, protein_types, c36, has):
+    """Group the lines par_GUI.prm must carry, by section."""
+    out = {s: [] for s in PARAM_SECTIONS}
+    kinds = {'cross': 0, 'drug': 0, 'gap': 0, 'redundant': 0}
+    section, in_params = None, False
 
-    with open(str_file, 'r') as f:
-        lines = f.readlines()
-
-    current_section = None
-    in_params = False
-
-    for line in lines:
-        stripped = line.strip()
-
-        if 'read param' in stripped.lower():
+    for line in open(str_file):
+        s = line.strip()
+        if 'read param' in s.lower():
             in_params = True
             continue
-
         if not in_params:
             continue
-
-        if stripped in PARAM_SECTIONS:
-            current_section = stripped
+        if s in PARAM_SECTIONS:
+            section = s
+            continue
+        if s in ('END', 'RETURN'):
+            section = None
+            continue
+        if not s or s.startswith('!') or section not in PARAM_SECTIONS:
             continue
 
-        if stripped == 'END' or stripped == 'RETURN':
-            current_section = None
-            continue
-
-        if not stripped or stripped.startswith('!'):
-            continue
-
-        if current_section not in PARAM_SECTIONS:
-            continue
-
-        parts = stripped.split()
-        n = get_num_type_fields(current_section)
+        parts = s.split()
+        n = n_types(section)
         if len(parts) < n + 2:
             continue
+        types = parts[0:n]
 
-        type_fields = parts[0:n]
+        n_prot = sum(1 for t in types if t in protein_types)
+        if n_prot == len(types):
+            # every type is CHARMM36: redundant only if CHARMM36 really has it
+            if has(c36, section, types):
+                kinds['redundant'] += 1
+                continue
+            kinds['gap'] += 1
+        elif n_prot == 0:
+            kinds['drug'] += 1
+        else:
+            kinds['cross'] += 1
 
-        # Skip if ALL types are protein-side (redundant with CHARMM36)
-        if all(t in PROTEIN_TYPES for t in type_fields):
+        out[section].append(line.rstrip('\n') + '\n')
+
+    return out, kinds
+
+
+def insert(prm_file, params, label):
+    header = f"! === {label} cross-force-field "
+    lines, skipping, removed = [], False, 0
+    for l in open(prm_file):
+        if l.startswith(header):
+            skipping = True
+            removed += 1
             continue
-
-        params[current_section].append(line)
-
-    return params
-
-
-def insert_into_prm(prm_file, params, label):
-    """Insert parameters into the correct sections of par_GUI.prm."""
-    with open(prm_file, 'r') as f:
-        lines = f.readlines()
-
-    section_starts = {}
-    cmap_line = None
-
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped in PARAM_SECTIONS:
-            section_starts[stripped] = i
-        if stripped == 'CMAP':
-            cmap_line = i
-
-    ordered_sections = ['BONDS', 'ANGLES', 'DIHEDRALS', 'IMPROPERS']
-    section_ends = {}
-
-    for idx, section in enumerate(ordered_sections):
-        if section not in section_starts:
+        if skipping:
+            if l.strip() == '':
+                skipping = False
             continue
-        end = len(lines)
-        for next_section in ordered_sections[idx + 1:]:
-            if next_section in section_starts:
-                end = section_starts[next_section]
+        lines.append(l)
+    if removed:
+        print(f"  replaced {removed} previous {label} block(s)")
+
+    # Anything from here on is not a bonded-parameter section, so a block must
+    # never be inserted past it. par_GUI.prm has no CMAP, so keying only on CMAP
+    # (as this did originally) would append an IMPROPERS block after NONBONDED.
+    TAIL = ('CMAP', 'NONBONDED', 'NBFIX', 'HBOND', 'END')
+
+    starts, tail = {}, None
+    for i, l in enumerate(lines):
+        s = l.strip()
+        if s in PARAM_SECTIONS:
+            starts[s] = i
+        head = s.split()[0].upper() if s else ''
+        if head in TAIL and tail is None:
+            tail = i
+
+    ends = {}
+    for idx, sec in enumerate(ORDER):
+        if sec not in starts:
+            continue
+        end = tail if tail is not None else len(lines)
+        for nxt in ORDER[idx + 1:]:
+            if nxt in starts:
+                end = min(end, starts[nxt])
                 break
-        if cmap_line is not None and cmap_line < end:
-            end = cmap_line
-        section_ends[section] = end
+        ends[sec] = end
 
-    new_lines = list(lines)
-    total_added = 0
-
-    for section in reversed(ordered_sections):
-        section_params = params.get(section, [])
-        if not section_params or section not in section_ends:
+    total = 0
+    for sec in reversed(ORDER):
+        block_params = params.get(sec, [])
+        if not block_params or sec not in ends:
             continue
+        block = [header + f"{sec} ===\n"] + block_params + ['\n']
+        lines[ends[sec]:ends[sec]] = block
+        total += len(block_params)
 
-        insert_at = section_ends[section]
-        block = [f"\n! === {label} cross-force-field {section} ===\n"]
-        for p in section_params:
-            if not p.endswith('\n'):
-                p += '\n'
-            block.append(p)
-
-        new_lines[insert_at:insert_at] = block
-        total_added += len(section_params)
-
-    with open(prm_file, 'w') as f:
-        f.writelines(new_lines)
-
-    return total_added
+    open(prm_file, 'w').write(''.join(lines))
+    return total
 
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 add_naa_params_to_prm.py <str_file> [prm_file] [label]")
+    if len(sys.argv) < 3:
+        print(__doc__.strip().splitlines()[1])
+        sys.exit(1)
+    str_file = sys.argv[1]
+    aa = sys.argv[2].lower()
+    label = sys.argv[3] if len(sys.argv) > 3 else 'NAA'
+    prm_file = sys.argv[4] if len(sys.argv) > 4 else 'par_GUI.prm'
+
+    if not os.path.exists(str_file):
+        print(f"ERROR: {str_file} not found")
         sys.exit(1)
 
-    str_file = sys.argv[1]
-    prm_file = sys.argv[2] if len(sys.argv) > 2 else 'par_GUI.prm'
-    label = sys.argv[3] if len(sys.argv) > 3 else 'NAA'
+    ren = _rename_module()
+    if aa not in ren.AMINO_ACID_MAPS:
+        print(f"ERROR: unknown amino acid '{aa}'; valid: {', '.join(ren.AMINO_ACID_MAPS)}")
+        sys.exit(1)
+    protein_types = set(ren.AMINO_ACID_MAPS[aa].values())
+    c36 = ren.load_c36_params()
 
-    print(f"Extracting parameters from {str_file}...")
-    params = extract_params(str_file)
-
-    for section in ['BONDS', 'ANGLES', 'DIHEDRALS', 'IMPROPERS']:
-        count = len(params[section])
-        if count:
-            print(f"  {section}: {count}")
-
-    print(f"\nInserting into {prm_file}...")
-    total = insert_into_prm(prm_file, params, label)
-    print(f"  Total parameters added: {total}")
-    print("Done!")
+    print(f"Extracting parameters from {str_file} (map {aa}, protein types {sorted(protein_types)})")
+    params, kinds = extract(str_file, protein_types, c36, ren.c36_has)
+    print(f"  cross-force-field: {kinds['cross']}   drug-only (novel CGenFF): {kinds['drug']}"
+          f"   CHARMM36 gaps kept: {kinds['gap']}   redundant dropped: {kinds['redundant']}")
+    for sec in ORDER:
+        if params[sec]:
+            print(f"    {sec}: {len(params[sec])}")
+    total = insert(prm_file, params, label)
+    print(f"  inserted {total} parameters into {prm_file}")
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

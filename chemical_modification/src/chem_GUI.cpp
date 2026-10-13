@@ -15,6 +15,7 @@
 #include <wx/stdpaths.h>
 #include <wx/filename.h>
 #include <wx/textfile.h>
+#include <wx/file.h>
 
 class MyFrame : public wxFrame
 {
@@ -26,6 +27,8 @@ private:
     wxString pyFilePath;
     wxString incomingPdbPath;
     wxString mol2FilePath;
+    wxString chargeOverrideFile;   // optional hand-curated charges; see OnSelectChargeOverride
+    wxStaticText* chargeOverrideLabel = nullptr;
     wxString strFilePath;
     wxTextCtrl* statusText;
     wxChoice* aminoAcidChoice;
@@ -70,11 +73,18 @@ private:
     void OnDownloadNAAMol2(wxCommandEvent& event);
     void OnUploadNAAStr(wxCommandEvent& event);
     void OnDownloadNtrmMol2(wxCommandEvent& event);
+    void OnSelectChargeOverride(wxCommandEvent& event);
     void OnUploadNtrmStr(wxCommandEvent& event);
     bool MakeMol2(const wxString& pdb, const wxString& psf, const wxString& mol2);
     void SaveMol2Copy(const wxString& mol2);
     void OnCreateViewCapsid(wxCommandEvent& event);
     void OnMinimizeCapsid(wxCommandEvent& event);
+    void OnMinimizeMonomer(wxCommandEvent& event);
+    bool MinimizeOneMonomer(const wxString& stem);
+    void OnBuildMonomer(wxCommandEvent& event);
+    wxArrayString MonomerStems();    // fix_a/b/c (Qbeta) or TMV_naa (TMV)
+    bool BuildMonomers();            // fill the pgn templates and run psfgen
+    void ShowLogTail(const wxString& logFile, int lines = 18);
     void CreateViewQbeta();
     void CreateViewTMV();
     void OnZipFiles(wxCommandEvent& event);
@@ -108,13 +118,16 @@ enum {
     ID_CREATE_VIEW_CAPSID = 1011,
     ID_MINIMIZE_CAPSID = 1012,
     ID_ZIP_FILES = 1013,
+    ID_MINIMIZE_MONOMER = 1032,
+    ID_BUILD_MONOMER = 1033,
     ID_LOAD_MOLECULE = 1014,
     ID_BONDED_MODE = 1015,
     ID_DELETED_MODE = 1016,
     ID_CLEAR_BONDED = 1017,
     ID_DOWNLOAD_NTRM_MOL2 = 1030,
     ID_UPLOAD_NTRM_STR = 1031,
-    ID_CLEAR_DELETED = 1018
+    ID_CLEAR_DELETED = 1018,
+    ID_APPLY_CHARGE_OVERRIDES = 1034
 };
 
 wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
@@ -129,9 +142,12 @@ wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
     EVT_BUTTON(ID_DOWNLOAD_NAA_MOL2, MyFrame::OnDownloadNAAMol2)
     EVT_BUTTON(ID_UPLOAD_NAA_STR, MyFrame::OnUploadNAAStr)
     EVT_BUTTON(ID_DOWNLOAD_NTRM_MOL2, MyFrame::OnDownloadNtrmMol2)
+    EVT_BUTTON(ID_APPLY_CHARGE_OVERRIDES, MyFrame::OnSelectChargeOverride)
     EVT_BUTTON(ID_UPLOAD_NTRM_STR, MyFrame::OnUploadNtrmStr)
     EVT_BUTTON(ID_CREATE_VIEW_CAPSID, MyFrame::OnCreateViewCapsid)
     EVT_BUTTON(ID_MINIMIZE_CAPSID, MyFrame::OnMinimizeCapsid)
+    EVT_BUTTON(ID_BUILD_MONOMER, MyFrame::OnBuildMonomer)
+    EVT_BUTTON(ID_MINIMIZE_MONOMER, MyFrame::OnMinimizeMonomer)
     EVT_BUTTON(ID_ZIP_FILES, MyFrame::OnZipFiles)
     EVT_BUTTON(ID_LOAD_MOLECULE, MyFrame::OnLoadMolecule)
     EVT_TOGGLEBUTTON(ID_BONDED_MODE, MyFrame::OnBondedModeToggle)
@@ -415,6 +431,10 @@ wxPanel* MyFrame::CreateTopologyPanel(wxNotebook* notebook)
     wxStaticBoxSizer* naaMol2StrBox = new wxStaticBoxSizer(wxVERTICAL, panel, "NAA CGenFF Workflow");
     wxStaticText* naaInstructionText = new wxStaticText(panel, wxID_ANY, 
         "1. Download naa.mol2 and upload it to https://cgenff.silcsbio.com/\n"
+        "   *** Tick 'include parameters that are already in CGenFF' ***\n"
+        "   Without it the .str holds only the new, analogy-derived terms, and\n"
+        "   every other term must come from your local par_all36_cgenff.prm -\n"
+        "   so a newer service library than your local release breaks the run.\n"
         "2. Import the returned zip here (naa.str is extracted)\n"
         "LYSINE ONLY: a lysine modification also modifies the N-terminus.\n"
         "   Repeat steps 1-2 for ntrm.mol2 -> ntrm.str. Both are required.");
@@ -429,6 +449,24 @@ wxPanel* MyFrame::CreateTopologyPanel(wxNotebook* notebook)
     wxButton* uploadNtrmStrButton = new wxButton(panel, ID_UPLOAD_NTRM_STR, "Import N-terminus CGenFF result (zip/str)");
     naaMol2StrBox->Add(downloadNtrmMol2Button, 0, wxALL | wxEXPAND, 5);
     naaMol2StrBox->Add(uploadNtrmStrButton, 0, wxALL | wxEXPAND, 5);
+
+    // Optional step, so it sits to the side rather than in the main column:
+    // only molecules with chemistry CGenFF cannot type (a persistent radical is
+    // the usual case) need hand-curated charges. A run without an override file
+    // is unaffected.
+    wxBoxSizer* overrideRow = new wxBoxSizer(wxHORIZONTAL);
+    chargeOverrideLabel = new wxStaticText(panel, wxID_ANY,
+        "Optional: no charge override file selected.\n"
+        "Pick one only if CGenFF cannot type part of your\n"
+        "molecule (a radical, say). Applied automatically\n"
+        "during 'Create Novel Amino Acid'.");
+    chargeOverrideLabel->Wrap(260);
+    wxButton* applyOverridesButton = new wxButton(panel, ID_APPLY_CHARGE_OVERRIDES,
+        "Charge\noverride file...", wxDefaultPosition, wxSize(120, 40));
+    overrideRow->Add(chargeOverrideLabel, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 5);
+    overrideRow->Add(applyOverridesButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+    naaMol2StrBox->Add(overrideRow, 0, wxEXPAND | wxTOP, 5);
+
     sizer->Add(naaMol2StrBox, 0, wxALL | wxEXPAND, 10);
     
     wxStaticBoxSizer* topologyBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Novel Amino Acid Creation");
@@ -455,9 +493,13 @@ wxPanel* MyFrame::CreateCapsidPanel(wxNotebook* notebook)
     sizer->Add(vlpBox, 0, wxALL | wxEXPAND, 10);
     
     wxStaticBoxSizer* capsidBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Capsid Operations");
-    wxButton* createViewCapsidButton = new wxButton(panel, ID_CREATE_VIEW_CAPSID, "Create And View Capsid");
+    wxButton* buildMonomerButton = new wxButton(panel, ID_BUILD_MONOMER, "1. Build Modified Monomer(s)");
+    wxButton* minimizeMonomerButton = new wxButton(panel, ID_MINIMIZE_MONOMER, "2. Minimize Monomer (protein fixed)");
+    wxButton* createViewCapsidButton = new wxButton(panel, ID_CREATE_VIEW_CAPSID, "3. Assemble And View Capsid");
     wxButton* minimizeCapsidButton = new wxButton(panel, ID_MINIMIZE_CAPSID, "Minimize Capsid");
     wxButton* zipFilesButton = new wxButton(panel, ID_ZIP_FILES, "Package Files (Zip)");
+    capsidBox->Add(buildMonomerButton, 0, wxALL | wxEXPAND, 5);
+    capsidBox->Add(minimizeMonomerButton, 0, wxALL | wxEXPAND, 5);
     capsidBox->Add(createViewCapsidButton, 0, wxALL | wxEXPAND, 5);
     capsidBox->Add(minimizeCapsidButton, 0, wxALL | wxEXPAND, 5);
     capsidBox->Add(zipFilesButton, 0, wxALL | wxEXPAND, 5);
@@ -784,6 +826,43 @@ void MyFrame::SaveMol2Copy(const wxString& mol2)
     }
 }
 
+// Hand-curated atom types and partial charges, for groups CGenFF has no
+// chemistry for. CGenFF types the nearest closed-shell analogue instead - a
+// persistent radical's oxygen comes back as an alkoxide, which also saddles the
+// residue with a formal charge it should not have. The values must come from the
+// literature, so the GUI supplies only the mechanism; the numbers live in an
+// override .prm the user selects here.
+//
+// This button only RECORDS the file. The override cannot be applied on demand,
+// because nad.str is created and consumed inside a single OnCreateTopology run:
+// noX_psf.py writes it, the rename retypes it, and ./IC_naa then reads it to
+// build the RESI NAA block in top_all36_cgenff_CBD.rtf - which is where psfgen
+// gets the charges that end up in the PSF. Applying it before that run would be
+// overwritten; after, the topology is already written. So OnCreateTopology
+// applies it in the one correct position: after the rename (so the protein-side
+// types are settled) and before the parameter steps (so they see the corrected
+// atom types). With no file selected, nothing changes and the run behaves as
+// it always did.
+void MyFrame::OnSelectChargeOverride(wxCommandEvent& event)
+{
+    wxFileDialog openDialog(this, "Select the charge override file", "", "",
+                            "Parameter files (*.prm)|*.prm|All files (*.*)|*.*",
+                            wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (openDialog.ShowModal() == wxID_CANCEL) return;
+
+    chargeOverrideFile = openDialog.GetPath();
+    if (chargeOverrideLabel) {
+        chargeOverrideLabel->SetLabel("Charge overrides WILL be applied from:\n" +
+                                      wxFileName(chargeOverrideFile).GetFullName() +
+                                      "\nduring 'Create Novel Amino Acid'.");
+        chargeOverrideLabel->Wrap(260);
+        chargeOverrideLabel->GetParent()->Layout();
+    }
+    statusText->AppendText("Charge override file selected: " + chargeOverrideFile +
+                           "\nIt will be applied during 'Create Novel Amino Acid', "
+                           "after the atom-type renaming and before the parameter steps.\n\n");
+}
+
 void MyFrame::OnDownloadNtrmMol2(wxCommandEvent& event)
 {
     if (!wxFileExists("ntrm_fixed.pdb") || !wxFileExists("ntrm.psf")) {
@@ -905,9 +984,9 @@ void MyFrame::OnRunRenaming(wxCommandEvent& event)
         statusText->AppendText("Error: BBS atom renaming script failed. Make sure fix_atom_naming_pdb_BBS.py exists.\n");
         return;
     }
-    statusText->AppendText("Running ./IC_table command...\n");
+    statusText->AppendText("Running ./IC_table_one command...\n");
     
-    wxString icTableCommand = "/Users/carydarwin/eviVLP/GUI/IC_table_one";
+    wxString icTableCommand = "./IC_table_one";   // built from IC_table_one.cpp
     int icResult = system(icTableCommand.mb_str());
     
     if (icResult == 0) {
@@ -1340,6 +1419,29 @@ void MyFrame::OnCreateTopology(wxCommandEvent& event)
         return;
     }
     statusText->AppendText("Atom type renaming executed successfully.\n");
+
+    // Optional hand-curated charges (see OnSelectChargeOverride). Must land here:
+    // after the rename, so the protein-side types are final, and before the
+    // parameter steps and ./IC_naa, which read the types and charges from this
+    // same nad.str.
+    if (!chargeOverrideFile.IsEmpty()) {
+        wxString ovr = "python3 apply_charge_overrides.py nad.str \"" +
+                       chargeOverrideFile + "\" > charge_overrides.log 2>&1";
+        statusText->AppendText("Running command: " + ovr + "\n");
+        int ovrResult = system(ovr.mb_str());
+        ShowLogTail("charge_overrides.log", 40);
+        if (ovrResult != 0) {
+            statusText->AppendText("Error: apply_charge_overrides.py refused or failed. "
+                                   "nad.str is unchanged and the run is stopping, because "
+                                   "continuing would build the residue with CGenFF's "
+                                   "uncorrected charges.\n");
+            wxMessageBox("Charge overrides were not applied - see the log in the status "
+                         "pane. The run has stopped so the residue is not built with the "
+                         "wrong charges.", "Overrides not applied", wxOK | wxICON_ERROR);
+            return;
+        }
+        statusText->AppendText("Charge overrides applied to nad.str.\n");
+    }
     
     wxString command0 = "python3 fix_atom_naming_pdb_naa.py";
     statusText->AppendText("Running command: " + command0 + "\n");
@@ -1350,7 +1452,46 @@ void MyFrame::OnCreateTopology(wxCommandEvent& event)
         return;
     }
     statusText->AppendText("fix_atom_naming_pdb_naa.py executed successfully.\n");
-    
+
+    // Novel CGenFF + cross-force-field parameters for the modified side chain.
+    // par_GUI.prm is the third parameter file a NAMD run loads, alongside
+    // par_all36m_prot.prm and par_all36_cgenff.prm, so it must carry every term
+    // the released sets lack. Without this the junction dihedrals stayed in
+    // nad.str and never reached the simulation.
+    {
+        wxString addNaa = "python3 add_naa_params_to_prm.py nad.str " + aminoAcidAbbrev + " NAA";
+        statusText->AppendText("Running command: " + addNaa + "\n");
+        if (system(addNaa.mb_str()) != 0) {
+            statusText->AppendText("Error: add_naa_params_to_prm.py failed.\n");
+            return;
+        }
+        statusText->AppendText("NAA parameters added to par_GUI.prm.\n");
+
+        // Renaming protein-side types orphans any term CGenFF satisfied from its
+        // own release library: it is absent from the .str, so nothing re-emits it
+        // under the new type. This copies those values across.
+        wxString xff = "python3 complete_cross_ff.py naa.str nad.str NAA";
+        statusText->AppendText("Running command: " + xff + "\n");
+        if (system(xff.mb_str()) != 0) {
+            statusText->AppendText("Error: complete_cross_ff.py failed for NAA.\n");
+            return;
+        }
+
+        // Catch a malformed parameter file here rather than in NAMD, where it
+        // surfaces as "FATAL ERROR: ABNORMAL EOF FOUND - buffer=*END*".
+        wxString checkPrm = "python3 validate_prm.py par_GUI.prm";
+        statusText->AppendText("Running command: " + checkPrm + "\n");
+        if (system(checkPrm.mb_str()) != 0) {
+            statusText->AppendText("Error: par_GUI.prm failed validation (see terminal). "
+                                   "NAMD would abort while reading it.\n");
+            wxMessageBox("par_GUI.prm is malformed - see the terminal output. "
+                         "Click 'Run Renaming' to rebuild it from par_GUI_template.prm.",
+                         "Parameter file invalid", wxOK | wxICON_ERROR);
+            return;
+        }
+        statusText->AppendText("par_GUI.prm validated.\n");
+    }
+
     wxString command3 = "./IC_naa";
     statusText->AppendText("Running command: " + command3 + "\n");
     int result3 = system(command3.mb_str());
@@ -1438,6 +1579,13 @@ void MyFrame::OnCreateTopology(wxCommandEvent& event)
         }
 statusText->AppendText("NPC cross-FF parameters added to par_GUI.prm.\n");
 
+        wxString xffN = "python3 complete_cross_ff.py ntrm.str ntrm_clean.str NPC";
+        statusText->AppendText("Running command: " + xffN + "\n");
+        if (system(xffN.mb_str()) != 0) {
+            statusText->AppendText("Error: complete_cross_ff.py failed for NPC.\n");
+            return;
+        }
+
         wxString ntrmIC = "./IC_ntrm_NPC";
         statusText->AppendText("Running command: " + ntrmIC + "\n");
         int ntrmICResult = system(ntrmIC.mb_str());
@@ -1464,180 +1612,329 @@ statusText->AppendText("NPC cross-FF parameters added to par_GUI.prm.\n");
     statusText->AppendText("Final processing completed successfully!\n");
 }
 
+
+// Print the end of a NAMD/VMD log into the status box. A missing parameter or a
+// bad config aborts NAMD during setup, and the reason is only in its output.
+void MyFrame::ShowLogTail(const wxString& logFile, int lines)
+{
+    wxTextFile log;
+    if (!wxFileExists(logFile) || !log.Open(logFile)) {
+        statusText->AppendText("  (no log at " + logFile + " - NAMD may not have started; "
+                               "check the binary path)\n");
+        return;
+    }
+    int n = log.GetLineCount();
+    statusText->AppendText("  --- last lines of " + logFile + " ---\n");
+    for (int i = (n > lines ? n - lines : 0); i < n; i++)
+        statusText->AppendText("  " + log.GetLine(i) + "\n");
+    statusText->AppendText("  --- end of log ---\n");
+    log.Close();
+}
+
+// ── stage 1: build the modified monomer(s) ──────────────────────────────────
+// The coat-protein templates only LABEL the target residues NAA/NPC; the real
+// residue, with its drug adduct, is constructed here by psfgen from RESI NAA /
+// RESI NPC and guesscoord. Splitting this out from assembly is what lets the
+// monomer be minimised before the symmetry matrices replicate it.
+wxArrayString MyFrame::MonomerStems()
+{
+    wxArrayString stems;
+    if (vlpTypeChoice->GetSelection() == 1) {
+        stems.Add("TMV_naa");
+    } else {
+        stems.Add("fix_a");
+        stems.Add("fix_b");
+        stems.Add("fix_c");
+    }
+    return stems;
+}
+
+bool MyFrame::BuildMonomers()
+{
+    int selection = aminoAcidChoice->GetSelection();
+    wxString selectedAminoAcid = aminoAcidChoice->GetString(selection);
+
+    if (!processor.ProcessPgnFile(std::string(selectedAminoAcid.mb_str()))) {
+        statusText->AppendText("Error: could not generate the monomer pgn file(s) from templates.\n");
+        return false;
+    }
+
+    bool tmv = (vlpTypeChoice->GetSelection() == 1);
+    if (tmv && !wxFileExists("TMV_naa.pgn")) {
+        statusText->AppendText("Error: no TMV coat-protein template for " + selectedAminoAcid +
+                               ". TMV supports Tyrosine (tmv_Y139.pdb) and Lysine "
+                               "(tmv_K53_K68.pdb) only.\n");
+        wxMessageBox("TMV has no coat-protein template for " + selectedAminoAcid + ".",
+                     "TMV template missing", wxOK | wxICON_ERROR);
+        return false;
+    }
+
+    wxArrayString stems = MonomerStems();
+    for (size_t i = 0; i < stems.GetCount(); i++) {
+        wxString pgn = tmv ? "TMV_naa.pgn" : (stems[i] + ".pgn");
+        wxString cmd = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/"
+                       "startup.command.csh -dispdev text -e " + pgn;
+        statusText->AppendText("Running command: " + cmd + "\n");
+        if (RunVmd(cmd, stems[i] + ".pdb") != 0) {
+            statusText->AppendText("Error: " + pgn + " failed.\n");
+            return false;
+        }
+        statusText->AppendText(pgn + " built " + stems[i] + ".pdb / .psf\n");
+        // a fresh build invalidates any earlier minimisation of this monomer
+        if (wxFileExists(stems[i] + "_premin.pdb")) wxRemoveFile(stems[i] + "_premin.pdb");
+        if (wxFileExists(stems[i] + "_min.coor")) wxRemoveFile(stems[i] + "_min.coor");
+    }
+    return true;
+}
+
+void MyFrame::OnBuildMonomer(wxCommandEvent& event)
+{
+    statusText->AppendText("=== Building the modified monomer(s) ===\n");
+    if (!BuildMonomers()) {
+        wxMessageBox("Monomer build failed - see the status log.", "Build failed",
+                     wxOK | wxICON_ERROR);
+        return;
+    }
+    statusText->AppendText("Monomer(s) built. Next: 'Minimize Monomer' to relieve the "
+                           "geometry guesscoord built, then 'Assemble And View Capsid'.\n\n");
+}
+
 void MyFrame::OnCreateViewCapsid(wxCommandEvent& event)
 {
     int vlpSelection = vlpTypeChoice->GetSelection();
-    
-    if (vlpSelection == 0) {
-        CreateViewQbeta();
-    } else if (vlpSelection == 1) {
-        CreateViewTMV();
-    } else {
+    if (vlpSelection != 0 && vlpSelection != 1) {
         statusText->AppendText("Error: Unknown VLP type selected.\n");
+        return;
     }
+
+    // Build the monomers only if they are missing. A monomer that is already
+    // present may have been minimised, and rebuilding would silently discard
+    // that work, so it is left alone.
+    wxArrayString stems = MonomerStems();
+    wxArrayString missing;
+    for (size_t i = 0; i < stems.GetCount(); i++)
+        if (!wxFileExists(stems[i] + ".pdb")) missing.Add(stems[i]);
+
+    if (!missing.IsEmpty()) {
+        statusText->AppendText("Monomer(s) not built yet (" +
+                               wxJoin(missing, ',') + ") - building them now.\n");
+        if (!BuildMonomers()) return;
+    } else {
+        int minimised = 0;
+        for (size_t i = 0; i < stems.GetCount(); i++)
+            if (wxFileExists(stems[i] + "_premin.pdb")) minimised++;
+        statusText->AppendText(wxString::Format(
+            "Using the existing monomer(s); %d of %d have been minimised.\n",
+            minimised, (int)stems.GetCount()));
+    }
+
+    if (vlpSelection == 0) CreateViewQbeta();
+    else                   CreateViewTMV();
 }
 
 void MyFrame::CreateViewQbeta()
 {
-    int selection = aminoAcidChoice->GetSelection();
-    wxString selectedAminoAcid = aminoAcidChoice->GetString(selection);
-    
-    if (!processor.ProcessPgnFile(std::string(selectedAminoAcid.mb_str()))) {
-        statusText->AppendText("Error: could not generate fix_a/b/c.pgn from templates.\n");
+    // Monomers must already exist; BuildMonomers() is called by the caller only
+    // when they are absent, so a minimised monomer is never silently rebuilt.
+    statusText->AppendText("Assembling the Qbeta capsid from fix_a/b/c.pdb...\n");
+
+    wxString maker = "python3 Qbeta_capsid_maker.py";
+    statusText->AppendText("Running command: " + maker + "\n");
+    if (system(maker.mb_str()) != 0) {
+        statusText->AppendText("Error: Qbeta_capsid_maker.py failed.\n");
         return;
     }
 
-    wxString command1 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e fix_a.pgn";
-    statusText->AppendText("Running command: " + command1 + "\n");
-    
-    int result1 = RunVmd(command1, "fix_a.pdb");
-    
-    if (result1 == 0) {
-        statusText->AppendText("fix_a.pgn executed successfully.\n");
-        
-        wxString command2 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e fix_b.pgn";
-        statusText->AppendText("Running command: " + command2 + "\n");
-        
-        int result2 = RunVmd(command2, "fix_b.pdb");
-        
-        if (result2 == 0) {
-            statusText->AppendText("fix_b.pgn executed successfully.\n");
-            
-            wxString command3 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e fix_c.pgn";
-            statusText->AppendText("Running command: " + command3 + "\n");
-            
-            int result3 = RunVmd(command3, "fix_c.pdb");
-            
-            if (result3 == 0) {
-                statusText->AppendText("fix_c.pgn executed successfully.\n");
-                
-                wxString command4 = "python3 Qbeta_capsid_maker.py";
-                statusText->AppendText("Running command: " + command4 + "\n");
-                
-                int result4 = system(command4.mb_str());
-                
-                if (result4 == 0) {
-                    statusText->AppendText("Qbeta_capsid_maker.py executed successfully.\n");
-                    
-                    wxString command5 = "python3 Qbeta_pgn_writer.py";
-                    statusText->AppendText("Running command: " + command5 + "\n");
-                    
-                    int result5 = system(command5.mb_str());
-                    
-                    if (result5 == 0) {
-                        wxString command6 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e QB_capsid.pgn";
-                        wxString command7 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -e capsid_zoom_naa.tcl";
-                        statusText->AppendText("Running command: " + command6 + "\n");
-
-                        int result6 = RunVmd(command6, "capsid_naa.pdb");
-
-                        if (result6 == 0) {
-                            statusText->AppendText("QB_capsid.pgn executed successfully.\n");
-                            
-                            statusText->AppendText("Running command: " + command7 + "\n");
-                            int result7 = RunVmd(command7, "");
-                            
-                            if (result7 == 0) {
-                                statusText->AppendText("capsid_zoom_naa.tcl executed successfully.\n");
-                                statusText->AppendText("Capsid creation and viewing process completed successfully!\n");
-                            } else {
-                                statusText->AppendText("Error: capsid_zoom_naa.tcl failed.\n");
-                            }
-                        } else {
-                            statusText->AppendText("Error: QB_capsid.pgn failed.\n");
-                        }
-                    } else {
-                        statusText->AppendText("Error: Qbeta_pgn_writer.py failed.\n");
-                    }
-                } else {
-                    statusText->AppendText("Error: Qbeta_capsid_maker.py failed.\n");
-                }
-            } else {
-                statusText->AppendText("Error: fix_c.pgn failed.\n");
-            }
-        } else {
-            statusText->AppendText("Error: fix_b.pgn failed.\n");
-        }
-    } else {
-        statusText->AppendText("Error: fix_a.pgn failed.\n");
+    wxString writer = "python3 Qbeta_pgn_writer.py";
+    statusText->AppendText("Running command: " + writer + "\n");
+    if (system(writer.mb_str()) != 0) {
+        statusText->AppendText("Error: Qbeta_pgn_writer.py failed.\n");
+        return;
     }
+
+    wxString assemble = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e " "QB_capsid.pgn";
+    statusText->AppendText("Running command: " + assemble + "\n");
+    if (RunVmd(assemble, "capsid_naa.pdb") != 0) {
+        statusText->AppendText("Error: QB_capsid.pgn failed.\n");
+        return;
+    }
+    statusText->AppendText("QB_capsid.pgn executed successfully.\n");
+
+    wxString view = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -e capsid_zoom_naa.tcl";
+    statusText->AppendText("Running command: " + view + "\n");
+    if (RunVmd(view, "") != 0) {
+        statusText->AppendText("Error: capsid_zoom_naa.tcl failed.\n");
+        return;
+    }
+    statusText->AppendText("Qbeta capsid assembled and displayed.\n\n");
 }
 
 void MyFrame::CreateViewTMV()
 {
-    statusText->AppendText("Starting TMV capsid creation and viewing process...\n");
+    statusText->AppendText("Assembling the TMV rod from TMV_naa.pdb...\n");
 
-    int tmvSel = aminoAcidChoice->GetSelection();
-    wxString tmvAminoAcid = aminoAcidChoice->GetString(tmvSel);
-    if (!processor.ProcessPgnFile(std::string(tmvAminoAcid.mb_str()))) {
-        statusText->AppendText("Error: could not generate TMV_naa.pgn from template.\n");
-        return;
-    }
-    if (!wxFileExists("TMV_naa.pgn")) {
-        statusText->AppendText("Error: no TMV coat-protein template for " + tmvAminoAcid +
-                               ". TMV currently supports Tyrosine (tmv_Y139.pdb) and Lysine "
-                               "(tmv_K53_K68.pdb) only.\n");
-        wxMessageBox("TMV has no coat-protein template for " + tmvAminoAcid +
-                     ".\n\nSupported: Tyrosine (Tyr139) and Lysine (Lys53 + Lys68).",
-                     "TMV template missing", wxOK | wxICON_ERROR);
+    wxString maker = "python3 TMV_capsid_maker.py";
+    statusText->AppendText("Running command: " + maker + "\n");
+    if (system(maker.mb_str()) != 0) {
+        statusText->AppendText("Error: TMV_capsid_maker.py failed.\n");
         return;
     }
 
-    wxString command1 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e TMV_naa.pgn";
-    statusText->AppendText("Running command: " + command1 + "\n");
-    int result1 = RunVmd(command1, "TMV_naa.pdb");
-    
-    if (result1 == 0) {
-        statusText->AppendText("TMV_naa.pgn executed successfully.\n");
-        
-        wxString command2 = "python3 TMV_capsid_maker.py";
-        statusText->AppendText("Running command: " + command2 + "\n");
-        int result2 = system(command2.mb_str());
-        
-        if (result2 == 0) {
-            statusText->AppendText("TMV_capsid_maker.py executed successfully.\n");
-            
-            wxString command3 = "python3 TMV_pgn_writer.py";
-            statusText->AppendText("Running command: " + command3 + "\n");
-            
-            int result3 = system(command3.mb_str());
-            
-            if (result3 == 0) {
-                wxString command4 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e TMV_all_out.pgn";
-                wxString command5 = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -e capsid_zoom_naa_TMV.tcl";
-                statusText->AppendText("Running command: " + command4 + "\n");
+    wxString writer = "python3 TMV_pgn_writer.py";
+    statusText->AppendText("Running command: " + writer + "\n");
+    if (system(writer.mb_str()) != 0) {
+        statusText->AppendText("Error: TMV_pgn_writer.py failed.\n");
+        return;
+    }
 
-                int result4 = RunVmd(command4, "TMV_naa_capsid.pdb");
+    wxString assemble = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e " "TMV_all_out.pgn";
+    statusText->AppendText("Running command: " + assemble + "\n");
+    if (RunVmd(assemble, "TMV_naa_capsid.pdb") != 0) {
+        statusText->AppendText("Error: TMV_all_out.pgn failed.\n");
+        return;
+    }
+    statusText->AppendText("TMV_all_out.pgn executed successfully.\n");
 
-                if (result4 == 0) {
-                    statusText->AppendText("TMV_all_out.pgn executed successfully.\n");
-                    
-                    statusText->AppendText("Running command: " + command5 + "\n");
-                    int result5 = RunVmd(command5, "");
-                    
-                    if (result5 == 0) {
-                        statusText->AppendText("capsid_zoom_naa.tcl executed successfully.\n");
-                        statusText->AppendText("TMV capsid creation and viewing process completed successfully!\n");
-                    } else {
-                        statusText->AppendText("Error: capsid_zoom_naa.tcl failed.\n");
-                    }
-                } else {
-                    statusText->AppendText("Error: TMV_all_out.pgn failed.\n");
-                }
-            } else {
-                statusText->AppendText("Error: TMV_pgn_writer.py failed.\n");
-            }
-        } else {
-            statusText->AppendText("Error: TMV_capsid_maker.py failed.\n");
+    wxString view = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -e capsid_zoom_naa_TMV.tcl";
+    statusText->AppendText("Running command: " + view + "\n");
+    if (RunVmd(view, "") != 0) {
+        statusText->AppendText("Error: capsid_zoom_naa_TMV.tcl failed.\n");
+        return;
+    }
+    statusText->AppendText("TMV rod assembled and displayed.\n\n");
+}
+
+
+// ── monomer minimisation, before the capsid is assembled ────────────────────
+// Relieves the geometry guesscoord built for the modified residues while every
+// crystallographic heavy atom stays fixed, so the symmetry matrices that
+// assemble the capsid remain valid. Clashes BETWEEN neighbouring subunits'
+// adducts cannot be seen here - that is what "Minimize Capsid" is for.
+bool MyFrame::MinimizeOneMonomer(const wxString& stem)
+{
+    if (!wxFileExists(stem + ".pdb") || !wxFileExists(stem + ".psf")) {
+        statusText->AppendText("Error: " + stem + ".pdb / .psf not found. Build the monomer first.\n");
+        return false;
+    }
+
+    // 1. flag which atoms may move (psfgen marks guessed coordinates occupancy 0)
+    wxString flags = "python3 write_fixed_atoms.py " + stem + ".pdb " + stem +
+                     "_fix.pdb --only-residues NAA NPC";
+    statusText->AppendText("Running command: " + flags + "\n");
+    if (system(flags.mb_str()) != 0) {
+        statusText->AppendText("Error: write_fixed_atoms.py failed for " + stem + ".\n");
+        return false;
+    }
+
+    // 2. fill the NAMD template for this monomer
+    {
+        wxTextFile tpl;
+        if (!tpl.Open("minimize_monomer_template.conf")) {
+            statusText->AppendText("Error: minimize_monomer_template.conf not found.\n");
+            return false;
         }
-    } else {
-        statusText->AppendText("Error: TMV_naa.pgn failed.\n");
+        wxString conf;
+        for (wxString l = tpl.GetFirstLine(); ; l = tpl.GetNextLine()) {
+            l.Replace("{{STEM}}", stem, true);
+            conf << l << "\n";
+            if (tpl.Eof()) break;
+        }
+        tpl.Close();
+        wxFile out("minimize_monomer.conf", wxFile::write);
+        out.Write(conf);
     }
+
+    // 3. minimise
+    // NAMD takes ONE config file and writes to stdout, so the log needs a shell
+    // redirect; passing it as a second argument gives NAMD two config files and
+    // it writes nothing at all.
+    wxString logFile = stem + "_min.log";
+    wxString namd = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 "
+                    "minimize_monomer.conf > " + logFile + " 2>&1";
+    statusText->AppendText("Running command: " + namd + "\n");
+    int rc = system(namd.mb_str());
+    if (rc != 0 || !wxFileExists(stem + "_min.coor")) {
+        statusText->AppendText("Error: NAMD minimisation failed for " + stem +
+                               " (exit " + wxString::Format("%d", rc) + ").\n");
+        ShowLogTail(logFile);
+        return false;
+    }
+
+    // 4. write the minimised coordinates back over the monomer PDB, keeping the original
+    if (!wxFileExists(stem + "_premin.pdb"))
+        wxCopyFile(stem + ".pdb", stem + "_premin.pdb", false);
+    {
+        wxTextFile tpl;
+        if (!tpl.Open("coor_to_pdb_template.tcl")) {
+            statusText->AppendText("Error: coor_to_pdb_template.tcl not found.\n");
+            return false;
+        }
+        wxString tcl;
+        for (wxString l = tpl.GetFirstLine(); ; l = tpl.GetNextLine()) {
+            l.Replace("{{STEM}}", stem, true);
+            tcl << l << "\n";
+            if (tpl.Eof()) break;
+        }
+        tpl.Close();
+        wxFile out("coor_to_pdb.tcl", wxFile::write);
+        out.Write(tcl);
+    }
+    wxString vmd = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh "
+                   "-dispdev text -e coor_to_pdb.tcl";
+    statusText->AppendText("Running command: " + vmd + "\n");
+    system(vmd.mb_str());
+
+    statusText->AppendText(stem + ".pdb updated from the minimisation (original kept as " +
+                           stem + "_premin.pdb).\n\n");
+    return true;
+}
+
+void MyFrame::OnMinimizeMonomer(wxCommandEvent& event)
+{
+    statusText->AppendText("=== Minimising the modified residues, protein fixed ===\n");
+
+    wxArrayString stems = MonomerStems();
+    int done = 0;
+    for (size_t i = 0; i < stems.GetCount(); i++) {
+        if (!wxFileExists(stems[i] + ".pdb")) {
+            statusText->AppendText("Skipping " + stems[i] + " (not built).\n");
+            continue;
+        }
+        if (!MinimizeOneMonomer(stems[i])) {
+            wxMessageBox("Monomer minimisation failed for " + stems[i] +
+                         " - see the status log.", "Minimisation failed", wxOK | wxICON_ERROR);
+            return;
+        }
+        done++;
+    }
+    if (!done) {
+        statusText->AppendText("No monomers found to minimise. Run the capsid step's first "
+                               "stage (or Create Novel Amino Acid) first.\n");
+        return;
+    }
+    statusText->AppendText("Monomer minimisation complete for " + wxString::Format("%d", done) +
+                           " subunit(s). Now run 'Create And View Capsid' to replicate and "
+                           "assemble, then 'Minimize Capsid' to resolve contacts between "
+                           "neighbouring subunits.\n\n");
 }
 
 void MyFrame::OnMinimizeCapsid(wxCommandEvent& event)
 {
-    wxString command9 = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 minimize.conf output.log";
+    // minimize.conf names the Qbeta solvated capsid; for TMV the structure,
+    // coordinates AND the periodic cell differ, so fail loudly rather than
+    // minimising the wrong system.
+    if (vlpTypeChoice->GetSelection() == 1) {
+        statusText->AppendText("Note: minimize.conf is set up for the Qbeta capsid "
+                               "(QB_naa_capsid_wb, 320 A cell). For TMV, point structure/"
+                               "coordinates at TMV_naa_capsid_wb and set cellBasisVector/"
+                               "cellOrigin for the rod before running this.\n");
+        if (wxMessageBox("minimize.conf is configured for Qbeta.\n\nRun it anyway?",
+                         "Check the cell for TMV", wxYES_NO | wxICON_WARNING) != wxYES)
+            return;
+    }
+
+    wxString command9 = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 "
+                        "minimize.conf > minimize_capsid.log 2>&1";
     
     statusText->AppendText("Minimize Capsid button clicked!\n");
     statusText->AppendText("Running command: " + command9 + "\n");
@@ -1645,9 +1942,12 @@ void MyFrame::OnMinimizeCapsid(wxCommandEvent& event)
     int result = system(command9.mb_str());
     
     if (result == 0) {
-        statusText->AppendText("NAMD minimize command executed successfully.\n");
+        statusText->AppendText("NAMD minimize command executed successfully "
+                               "(log: minimize_capsid.log).\n");
     } else {
-        statusText->AppendText("Error: NAMD minimize command failed.\n");
+        statusText->AppendText("Error: NAMD minimize command failed (exit " +
+                               wxString::Format("%d", result) + ").\n");
+        ShowLogTail("minimize_capsid.log");
     }
 }
 
@@ -1655,12 +1955,19 @@ void MyFrame::OnZipFiles(wxCommandEvent& event)
 {
     statusText->AppendText("Starting file compression...\n");
     
+    // The solvated capsid is named after the VLP, so the zip must follow the
+    // selection rather than always naming the Qbeta files.
+    wxString capsidStem = (vlpTypeChoice->GetSelection() == 1)
+                              ? "TMV_naa_capsid_wb" : "QB_naa_capsid_wb";
+    statusText->AppendText("Packaging " + capsidStem + " (" +
+                           vlpTypeChoice->GetString(vlpTypeChoice->GetSelection()) + ")\n");
+
     wxArrayString filesToZip;
     filesToZip.Add("minimize.conf");
-    filesToZip.Add("QB_naa_capsid_wb.psf");
-    filesToZip.Add("QB_naa_capsid_wb.pdb");
-    filesToZip.Add("par_GUI.prm");
-    filesToZip.Add("top_all36_cgenff_CBD.rtf");
+    filesToZip.Add(capsidStem + ".psf");
+    filesToZip.Add(capsidStem + ".pdb");
+    filesToZip.Add("par_GUI.prm");          // novel CGenFF + cross-FF parameters
+    filesToZip.Add("top_all36_cgenff_CBD.rtf");  // RESI NAA / RESI NPC topology
     
     bool allFilesExist = true;
     for (size_t i = 0; i < filesToZip.GetCount(); i++)

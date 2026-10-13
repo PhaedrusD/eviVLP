@@ -1,0 +1,137 @@
+* ----------------------------------------------------------------------------
+* eviVLP: hand-curated parameters for the AMINOXYL (nitroxide) RADICAL  >N-O.
+*
+* WHY THIS FILE EXISTS
+*   CGenFF has no atom type for a persistent aminoxyl radical, in any release
+*   (checked v4.6 and v5.0). The two types it reaches for are both wrong:
+*     NG2O1 / OG2N1  -> nitro group (R-NO2), not >N-O.
+*     NG301 / OG312  -> OG312 is "anionic alcohol oxygen" (alkoxide). The
+*                       CGenFF program picks this when the input structure
+*                       draws the radical as the N(+)-O(-) zwitterion, which
+*                       is what Open Babel writes. It then assigns a charge
+*                       near -0.66 to the oxygen and leaves the residue with
+*                       a spurious net -1.
+*     NG301 / OG311  -> v5.0 added these, but as an N-HYDROXYLAMINE: the bond
+*                       is 1.4104 A and it carries an N-O-H angle term. The
+*                       aminoxyl N-O is ~1.26 A and has no hydrogen.
+*   So the radical must be typed by hand and these terms must override the
+*   release values. Load this file AFTER par_GUI.prm so it wins.
+*
+* TYPING CONVENTION
+*   radical N -> NG301   (tertiary aliphatic amine N; vdW eps -0.0350 Rmin/2 2.00)
+*   radical O -> OG311   (methanol/ethanol O; vdW eps -0.1921 Rmin/2 1.7650)
+*                NO hydrogen is bonded to this oxygen.
+*   OG311 is used purely to borrow a reasonable oxygen vdW. The bonded terms
+*   below replace the hydroxyl geometry with nitroxide geometry.
+*
+* PROVENANCE  (confirmed)
+*   D. Sezer, J. H. Freed and B. Roux, J. Phys. Chem. B 2008, 112, 5755-5767.
+*   Lumata et al., J. Mater. Chem. B 2024, 12, 3273-3281 cites this as ref 71
+*   and its methods state the model used "the CHARMM all-atom force field and
+*   TEMPO parameters from Sezer et al., supplemented by the CGenFF force
+*   field" (refs 72/73 being Vanommeslaeghe/MacKerell, J. Chem. Inf. Model.
+*   2012, 52, 3155-3168 and 3144-3154). The three terms below annotated
+*   "Roux" are carried verbatim from extra.prm in the 2023 production runs.
+*   Everything else is CGenFF-by-analogy, retyped OG312 -> OG311.
+*
+* AS-SIMULATED RECORD
+*   These values, and the charges in the table below, are the ones actually
+*   used in the 2023 runs. Verified against RESI LYT (T158K arm) and RESI YMT
+*   (Y139 arm) in top_all27_prot_na_CBD.inp, and against the production
+*   structure T158K_new.psf, segment PA1 residue 158, where N7 carries
+*   +0.167 and O3 carries -0.379.
+* ----------------------------------------------------------------------------
+
+BONDS
+!     i      j        Kb        b0
+NG301  OG311   485.17     1.2640 ! nitroxide N-O, Roux. REPLACES the CGenFF v5.0
+                                 ! hydroxylamine value 234.14 / 1.4104
+CG301  NG301   200.00     1.4500 ! ***** , from CG321 NG301, penalty= 12
+
+ANGLES
+!     i      j      k      Ktheta  Theta0
+CG301  NG301  CG301    38.60    119.00 ! nitroxide, Roux. Near-planar N, not 112
+CG301  NG301  OG311    45.12    115.52 ! nitroxide, Roux
+CG321  CG301  NG301    57.00    107.00 ! ***** , from CG321 CG321 NG301, penalty= 12
+CG331  CG301  NG301    43.70    112.20 ! ***** , from CG331 CG321 NG311, penalty= 12.6
+
+DIHEDRALS
+!     i      j      k      l         Kchi   n   delta
+CG321  CG301  NG301  OG311      1.4200  1   180.00 ! ***** , from CG321 CG321 NG301 CG321
+CG321  CG301  NG301  OG311      0.8200  2     0.00 ! ***** , from CG321 CG321 NG301 CG321
+CG321  CG301  NG301  OG311      1.0200  3     0.00 ! ***** , from CG321 CG321 NG301 CG321
+CG331  CG301  NG301  OG311      1.4200  1   180.00 ! ***** , from CG321 CG321 NG301 CG321
+CG331  CG301  NG301  OG311      0.8200  2     0.00 ! ***** , from CG321 CG321 NG301 CG321
+CG331  CG301  NG301  OG311      1.0200  3     0.00 ! ***** , from CG321 CG321 NG301 CG321
+CG321  CG301  NG301  CG301      1.4200  1   180.00 ! ***** , from CG321 CG321 NG301 CG321
+CG321  CG301  NG301  CG301      0.8200  2     0.00 ! ***** , from CG321 CG321 NG301 CG321
+CG321  CG301  NG301  CG301      1.0200  3     0.00 ! ***** , from CG321 CG321 NG301 CG321
+CG331  CG301  NG301  CG301      1.4200  1   180.00 ! ***** , from CG321 CG321 NG301 CG321
+CG331  CG301  NG301  CG301      0.8200  2     0.00 ! ***** , from CG321 CG321 NG301 CG321
+CG331  CG301  NG301  CG301      1.0200  3     0.00 ! ***** , from CG321 CG321 NG301 CG321
+NG301  CG301  CG321  HGA2       0.1600  3     0.00 ! ***** , from NG301 CG321 CG321 HGA2
+NG301  CG301  CG331  HGA3       0.1600  3     0.00 ! ***** , from NG311 CG321 CG331 HGA3
+
+IMPROPERS
+! none. The aminoxyl N is left to the angle terms above; no out-of-plane
+! restraint was used in the 2023 runs.
+
+! ----------------------------------------------------------------------------
+! PARTIAL CHARGES for the 2,2,6,6-tetramethylpiperidin-1-oxyl (TEMPO) cage,
+! in the machine-readable form apply_charge_overrides.py reads. NAMD ignores
+! comment lines, so this one file is both the loadable parameter set and the
+! charge record. Charges live in the PSF, so these are applied to the stream
+! file BEFORE psfgen, via the "Apply charge overrides" button.
+!
+! WHY THE WHOLE CAGE IS LISTED, not just N and O: CGenFF reads the bare N-O as
+! an ALKOXIDE (oxygen typed OG312, "anionic alcohol oxygen"), so it gives the
+! group a formal charge of -1. Correcting that is a whole electron, and a whole
+! electron cannot be absorbed by nudging one or two atoms - it has to be taken
+! up by replacing every charge in the group. Listing only N and O leaves ~1 e
+! to redistribute, which the script refuses.
+!
+! TARGET IS +1, AND IT IS NOT THE RADICAL. The aminoxyl is a neutral radical;
+! the N-O pair sums to -0.2120, a dipole inside a neutral group. The +1 is the
+! protonated secondary amine of the 4-amino-TEMPO linker, which is an ammonium
+! (nitrogen with four bonds, type NG3P2) at pH 7. Radical character and formal
+! charge are independent: TEMPO's own oxidation product, the oxoammonium cation
+! TEMPO+, is a charged radical-derived species. If the linker amine is drawn
+! NEUTRAL the residue is 0, not +1, and the script will say so.
+!
+! ATOM NAMES BELOW ARE THE PUBLISHED ONES (RESI LYT / RESI YMT, 2023 runs).
+! CGenFF names atoms from the order they appear in the upload, so a fresh run
+! will use different names. Remap these to whatever the new .str reports before
+! applying. The types, charges and target do not change.
+!
+! @CHARGES  residue=NAA  target=+1
+! N7   NG301  +0.167    ! radical nitrogen
+! O3   OG311  -0.379    ! radical oxygen, NO hydrogen
+! C19  CG301  +0.284    ! quaternary carbon alpha to N
+! C25  CG301  +0.284    ! quaternary carbon alpha to N
+! C20  CG321  -0.237    ! ring CH2 (its H stay at +0.090)
+! C24  CG321  -0.237    ! ring CH2
+! C21  CG331  -0.300    ! gem-dimethyl (its H stay at +0.090)
+! C22  CG331  -0.300    ! gem-dimethyl
+! C26  CG331  -0.300    ! gem-dimethyl
+! C27  CG331  -0.300    ! gem-dimethyl
+! C23  CG314  +0.248    ! ring carbon bearing the linker
+! @BALANCE  C28
+! @END
+!
+! @BALANCE names the first linker carbon, which takes the small remainder
+! (+0.101 against the published values). Never balance onto the protein
+! backbone: those atoms must keep their standard CHARMM36 LYS/TYR charges for
+! the cross-force-field junction to behave.
+!
+! The cage alone - N, O, both alpha carbons, both ring CH2, four methyls and
+! all their hydrogens, i.e. everything except C23 and its substituent - sums to
+! +0.1220. It is deliberately NOT a neutral group on its own.
+!
+! Source: D. Sezer, J. H. Freed and B. Roux, J. Phys. Chem. B 2008, 112,
+! 5755-5767, cited as ref 71 in Lumata et al., J. Mater. Chem. B 2024, 12,
+! 3273-3281, whose methods state the model used "the CHARMM all-atom force
+! field and TEMPO parameters from Sezer et al., supplemented by the CGenFF
+! force field".
+! ----------------------------------------------------------------------------
+
+END
