@@ -98,27 +98,44 @@ IMPROPERS
 ! TEMPO+, is a charged radical-derived species. If the linker amine is drawn
 ! NEUTRAL the residue is 0, not +1, and the script will say so.
 !
-! ATOM NAMES BELOW ARE THE PUBLISHED ONES (RESI LYT / RESI YMT, 2023 runs).
-! CGenFF names atoms from the order they appear in the upload, so a fresh run
-! will use different names. Remap these to whatever the new .str reports before
-! applying. The types, charges and target do not change.
+! ATOM NAMES below are whatever CGenFF assigned in the most recent run. CGenFF
+! names atoms from the order they appear in the upload, so every re-run
+! renumbers them and these names go stale. Do NOT edit them by hand - run
+!
+!     python3 map_override_atoms.py nad.str nitroxide_overrides.prm
+!
+! after each CGenFF import. That script resolves each `role=` tag below from the
+! residue's own BOND records and rewrites only the name column; the types,
+! charges and target are the published values and it never touches them.
+! Nothing is renamed in the molecule itself - the atoms keep CGenFF's names,
+! which the .pdb, the patch and IC_naa all depend on.
+!
+! The recognising-a-nitroxide logic lives in map_override_atoms.py, here in the
+! case study, NOT in the GUI. The GUI's apply_charge_overrides.py addresses
+! atoms by name and knows no chemistry, so it serves any small molecule. A
+! different molecule CGenFF cannot type needs its own small mapper, or its
+! names written out by hand.
+!
+! Published 2023 names (RESI LYT / RESI YMT), for the record, in role order:
+!   N7, O3, C19/C25, C20/C24, C21/C22/C26/C27, C23, C28
 !
 ! @CHARGES  residue=NAA  target=+1
-! N7   NG301  +0.167    ! radical nitrogen
-! O3   OG311  -0.379    ! radical oxygen, NO hydrogen
-! C19  CG301  +0.284    ! quaternary carbon alpha to N
-! C25  CG301  +0.284    ! quaternary carbon alpha to N
-! C20  CG321  -0.237    ! ring CH2 (its H stay at +0.090)
-! C24  CG321  -0.237    ! ring CH2
-! C21  CG331  -0.300    ! gem-dimethyl (its H stay at +0.090)
-! C22  CG331  -0.300    ! gem-dimethyl
-! C26  CG331  -0.300    ! gem-dimethyl
-! C27  CG331  -0.300    ! gem-dimethyl
-! C23  CG314  +0.248    ! ring carbon bearing the linker
-! @BALANCE  C28
+! N1    NG301  +0.167 ! role=radical_N   the N bonded to a terminal O
+! O1    OG311  -0.379 ! role=radical_O   that O, no hydrogen (CGenFF types it OG312)
+! C2    CG301  +0.284 ! role=alpha_C     quaternary carbon alpha to N
+! C7    CG301  +0.284 ! role=alpha_C     quaternary carbon alpha to N
+! C1    CG321  -0.237 ! role=ring_CH2    ring CH2 (its H stay at +0.090)
+! C6    CG321  -0.237 ! role=ring_CH2    ring CH2
+! C4    CG331  -0.300 ! role=methyl_C    gem-dimethyl (its H stay at +0.090)
+! C5    CG331  -0.300 ! role=methyl_C    gem-dimethyl
+! C8    CG331  -0.300 ! role=methyl_C    gem-dimethyl
+! C9    CG331  -0.300 ! role=methyl_C    gem-dimethyl
+! C3    CG314  +0.248 ! role=ring_C_sub  the 4-position carbon, bearing the linker
+! @BALANCE  C10 ! role=linker_C1
 ! @END
 !
-! @BALANCE names the first linker carbon, which takes the small remainder
+! @BALANCE takes the first substituent carbon past the 4-position, which absorbs
+! the small remainder
 ! (+0.101 against the published values). Never balance onto the protein
 ! backbone: those atoms must keep their standard CHARMM36 LYS/TYR charges for
 ! the cross-force-field junction to behave.

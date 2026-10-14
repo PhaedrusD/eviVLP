@@ -1920,34 +1920,27 @@ void MyFrame::OnMinimizeMonomer(wxCommandEvent& event)
 
 void MyFrame::OnMinimizeCapsid(wxCommandEvent& event)
 {
-    // minimize.conf names the Qbeta solvated capsid; for TMV the structure,
-    // coordinates AND the periodic cell differ, so fail loudly rather than
-    // minimising the wrong system.
-    if (vlpTypeChoice->GetSelection() == 1) {
-        statusText->AppendText("Note: minimize.conf is set up for the Qbeta capsid "
-                               "(QB_naa_capsid_wb, 320 A cell). For TMV, point structure/"
-                               "coordinates at TMV_naa_capsid_wb and set cellBasisVector/"
-                               "cellOrigin for the rod before running this.\n");
-        if (wxMessageBox("minimize.conf is configured for Qbeta.\n\nRun it anyway?",
-                         "Check the cell for TMV", wxYES_NO | wxICON_WARNING) != wxYES)
-            return;
-    }
+    // Each VLP has its own minimize conf: box geometry, structure name, and cell
+    // differ between Qbeta (cubic 320 Å) and TMV (rectangular rod 209x209x121 Å).
+    bool tmv = (vlpTypeChoice->GetSelection() == 1);
+    wxString confFile  = tmv ? "TMV_minimize.conf"  : "minimize.conf";
+    wxString logFile   = "minimize_capsid.log";
 
-    wxString command9 = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 "
-                        "minimize.conf > minimize_capsid.log 2>&1";
-    
-    statusText->AppendText("Minimize Capsid button clicked!\n");
+    statusText->AppendText("Minimize Capsid: using " + confFile + "\n");
+
+    wxString command9 = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 " +
+                        confFile + " > " + logFile + " 2>&1";
     statusText->AppendText("Running command: " + command9 + "\n");
-    
+
     int result = system(command9.mb_str());
-    
+
     if (result == 0) {
         statusText->AppendText("NAMD minimize command executed successfully "
-                               "(log: minimize_capsid.log).\n");
+                               "(log: " + logFile + ").\n");
     } else {
         statusText->AppendText("Error: NAMD minimize command failed (exit " +
                                wxString::Format("%d", result) + ").\n");
-        ShowLogTail("minimize_capsid.log");
+        ShowLogTail(logFile);
     }
 }
 

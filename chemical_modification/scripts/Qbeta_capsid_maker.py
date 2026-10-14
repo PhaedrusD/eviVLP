@@ -1,5 +1,9 @@
+import os
 from Bio.PDB.PDBParser import PDBParser
 from Bio.PDB.PDBIO import PDBIO
+
+# All paths are relative to the script's own directory (eviVLP/GUI/).
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def transpose(matrix, mat_transpose):
     """Calculate the transpose of a 3x3 matrix."""
@@ -15,9 +19,9 @@ def process_protein(structure, matrix_file, output_prefix):
     io = PDBIO()
     io.set_structure(structure)
 
-    matrix = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]  # Rotation matrix
-    mat_transpose = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]  # Transpose matrix
-    translate = [0, 0, 0]  # Translation vector
+    matrix = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    mat_transpose = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    translate = [0, 0, 0]
 
     matrix_index = -1
     counter = 0
@@ -35,18 +39,16 @@ def process_protein(structure, matrix_file, output_prefix):
             if n == -1:
                 n = 2
 
-            # Populate rotation matrix and translation vector
             matrix[n][0] = float(string_list[1])
             matrix[n][1] = float(string_list[2])
             matrix[n][2] = float(string_list[3])
             translate[n] = float(string_list[4])
 
-            if index == 0:  # Every 3 lines, perform transformations
+            if index == 0:
                 for model in structure:
                     for chain in model:
                         for residue in chain:
                             for atom in residue:
-                                # Rotate protein
                                 a = atom.get_vector()
                                 a = a.left_multiply(matrix)
                                 atom.set_coord(a)
@@ -55,16 +57,13 @@ def process_protein(structure, matrix_file, output_prefix):
                     for chain in model:
                         for residue in chain:
                             for atom in residue:
-                                # Translate protein
                                 a = atom.get_vector()
                                 a = a + translate
                                 atom.set_coord(a)
 
-                # Save the transformed PDB file
                 output_file = f"{output_prefix}_com{matrix_index}.pdb"
                 io.save(output_file)
 
-                # Undo translation
                 for model in structure:
                     for chain in model:
                         for residue in chain:
@@ -73,7 +72,6 @@ def process_protein(structure, matrix_file, output_prefix):
                                 a = a - translate
                                 atom.set_coord(a)
 
-                # Undo rotation
                 transpose(matrix, mat_transpose)
                 for model in structure:
                     for chain in model:
@@ -85,19 +83,16 @@ def process_protein(structure, matrix_file, output_prefix):
 
 def main():
     parser = PDBParser(PERMISSIVE=True, QUIET=True)
+    matrix_file = os.path.join(SCRIPT_DIR, "matrix.txt")
 
-    # Process structure A
-    data_a = parser.get_structure("test_a", "/Users/carydarwin/eviVLP/GUI/fix_a.pdb")
-    process_protein(data_a, "/Users/carydarwin/eviVLP/matrix.txt", "QB_A")
+    data_a = parser.get_structure("test_a", os.path.join(SCRIPT_DIR, "fix_a.pdb"))
+    process_protein(data_a, matrix_file, "QB_A")
 
-    # Process structure B
-    data_b = parser.get_structure("test_b", "/Users/carydarwin/eviVLP/GUI/fix_b.pdb")
-    process_protein(data_b, "/Users/carydarwin/eviVLP/matrix.txt", "QB_B")
+    data_b = parser.get_structure("test_b", os.path.join(SCRIPT_DIR, "fix_b.pdb"))
+    process_protein(data_b, matrix_file, "QB_B")
 
-    # Process structure C
-    data_c = parser.get_structure("test_c", "/Users/carydarwin/eviVLP/GUI/fix_c.pdb")
-    process_protein(data_c, "/Users/carydarwin/eviVLP/matrix.txt", "QB_C")
-
+    data_c = parser.get_structure("test_c", os.path.join(SCRIPT_DIR, "fix_c.pdb"))
+    process_protein(data_c, matrix_file, "QB_C")
 
 if __name__ == "__main__":
     main()

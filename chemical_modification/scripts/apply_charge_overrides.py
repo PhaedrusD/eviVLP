@@ -57,7 +57,9 @@ def parse_overrides(path):
         if s.startswith("@END"):
             break
         if s.startswith("@BALANCE"):
-            balance += s.split()[1:]
+            # strip any trailing comment first: the atom lines below already do
+            # this, and a comment here would otherwise be read as atom names
+            balance += s.split("!")[0].split()[1:]
             continue
         f = s.split("!")[0].split()
         if len(f) >= 3:

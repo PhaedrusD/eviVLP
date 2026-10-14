@@ -1,5 +1,9 @@
+import os
 from Bio.PDB.PDBParser import PDBParser
 from Bio.PDB.PDBIO import PDBIO
+
+# All paths are relative to the script's own directory (eviVLP/GUI/).
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def transpose(matrix, mat_transpose):
     """Calculate the transpose of a 3x3 matrix."""
@@ -7,7 +11,7 @@ def transpose(matrix, mat_transpose):
         for j in range(3):
             mat_transpose[i][j] = matrix[j][i]
 
-def process_tmv_structure(structure, matrix_file, output_prefix):
+def process_tmv_structure(structure, matrix_file, output_dir):
     """
     Process a TMV structure by applying transformations (rotation and translation)
     defined in a matrix file. Generates TMV0.pdb, TMV1.pdb, etc.
@@ -15,9 +19,9 @@ def process_tmv_structure(structure, matrix_file, output_prefix):
     io = PDBIO()
     io.set_structure(structure)
 
-    matrix = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]  # Rotation matrix
-    mat_transpose = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]  # Transpose matrix
-    translate = [0, 0, 0]  # Translation vector
+    matrix = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    mat_transpose = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    translate = [0, 0, 0]
 
     matrix_index = -1
     counter = 0
@@ -35,16 +39,14 @@ def process_tmv_structure(structure, matrix_file, output_prefix):
             if n == -1:
                 n = 2
 
-            # Populate rotation matrix and translation vector
             matrix[n][0] = float(string_list[1])
             matrix[n][1] = float(string_list[2])
             matrix[n][2] = float(string_list[3])
             translate[n] = float(string_list[4])
 
-            if index == 0:  # Every 3 lines, perform transformations
+            if index == 0:
                 print(f"Processing transformation {matrix_index}...")
-                
-                # Apply rotation
+
                 for model in structure:
                     for chain in model:
                         for residue in chain:
@@ -53,7 +55,6 @@ def process_tmv_structure(structure, matrix_file, output_prefix):
                                 a = a.left_multiply(matrix)
                                 atom.set_coord(a)
 
-                # Apply translation
                 for model in structure:
                     for chain in model:
                         for residue in chain:
@@ -62,12 +63,10 @@ def process_tmv_structure(structure, matrix_file, output_prefix):
                                 a = a + translate
                                 atom.set_coord(a)
 
-                # Save the transformed PDB file with TMV naming convention
-                output_file = f"{output_prefix}/TMV{matrix_index}.pdb"
+                output_file = os.path.join(output_dir, f"TMV{matrix_index}.pdb")
                 io.save(output_file)
                 print(f"Saved: {output_file}")
 
-                # Undo translation to restore original structure
                 for model in structure:
                     for chain in model:
                         for residue in chain:
@@ -76,7 +75,6 @@ def process_tmv_structure(structure, matrix_file, output_prefix):
                                 a = a - translate
                                 atom.set_coord(a)
 
-                # Undo rotation to restore original structure
                 transpose(matrix, mat_transpose)
                 for model in structure:
                     for chain in model:
@@ -91,15 +89,14 @@ def process_tmv_structure(structure, matrix_file, output_prefix):
 def main():
     parser = PDBParser(PERMISSIVE=True, QUIET=True)
 
-    # Process TMV structure
-    input_pdb = "/Users/carydarwin/eviVLP/GUI/TMV_naa.pdb"
-    matrix_file = "/Users/carydarwin/eviVLP/GUI/matrix_TMV.txt"
-    output_dir = "/Users/carydarwin/eviVLP/GUI"  # Directory where TMV0.pdb, TMV1.pdb, etc. will be saved
-    
+    input_pdb   = os.path.join(SCRIPT_DIR, "TMV_naa.pdb")
+    matrix_file = os.path.join(SCRIPT_DIR, "matrix_TMV.txt")
+    output_dir  = SCRIPT_DIR
+
     print(f"Loading structure from: {input_pdb}")
     print(f"Using transformation matrix: {matrix_file}")
     print(f"Output directory: {output_dir}")
-    
+
     try:
         data_tmv = parser.get_structure("tmv_structure", input_pdb)
         process_tmv_structure(data_tmv, matrix_file, output_dir)

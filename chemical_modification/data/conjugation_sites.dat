@@ -1,0 +1,87 @@
+# eviVLP conjugation site registry
+#
+# STATUS: DATA ONLY. Nothing reads this file yet. The GUI still resolves coat
+# proteins in code - chem_GUI.cpp:489 (the VLP dropdown), chem_GUI.cpp
+# MonomerStems(), FileProcessor::GetTmvCoatProtein(), and the
+# qb_cp{1,2,3}_{{AMINO_ACID}}.pdb substitution in tcl/fix_{a,b,c}_template.pgn.
+# Those five places have to agree, and adding a capsid or a site means editing
+# and recompiling all of them.
+#
+# WHY A REGISTRY IS NEEDED, not just tidier: the Qbeta coat protein filename is
+# built by substituting the amino-acid abbreviation, so there can only ever be
+# ONE lysine file per capsid (qb_cp1_lys.pdb). Three coat-protein versions per
+# amino acid - native, mutated, alternative native - cannot be expressed at all
+# in the current scheme. That is the blocker, not the inelegance.
+#
+# FORMAT - two record types, whitespace-separated, # for comments.
+#
+#   CAPSID <name> <subunits> <assembly_script> <monomer_stems(,)>
+#   SITE   <capsid> <aa> <id> <coat_protein(,)> <residues(,)> <kind> <source>
+#
+#   kind    native = the residue is that amino acid in the wild-type structure
+#           mutant = the wild-type residue was changed to get this site
+#   id      what a site-selection dropdown would show
+#
+# EVERY ROW BELOW IS VERIFIED against the files in eviVLP/GUI: the residues
+# listed are the ones actually labelled NAA in that coat protein file, and
+# `kind` was checked against the wild-type residue at that number in
+# tmv_resall.pdb / qb_cp1.pdb. Candidate capsids with unverified residue
+# numbers are left commented out - a registry with a wrong number is worse
+# than one with a gap.
+#
+# Site literature: Wijesundara et al., "Rip it, stitch it, click it: A
+# Chemist's guide to VLP manipulation", Virology 577 (2022) 105-123, Tables 1-7.
+# Subunit counts are from that review's text, not derived from our own scripts.
+
+CAPSID  Qbeta   180   Qbeta_capsid_maker.py   fix_a,fix_b,fix_c
+CAPSID  TMV     2130  TMV_capsid_maker.py     TMV_naa
+
+# --- TMV ---------------------------------------------------------------------
+SITE  TMV    lys  native_K53_K68   tmv_K53_K68.pdb  53,68  native  Finbloom2016_doxorubicin
+SITE  TMV    tyr  native_Y139      tmv_Y139.pdb     139    native  Bruckman2013_MRI,Lee2020_superoxide
+SITE  TMV    lys  T158K            tmv_K158.pdb     158    mutant  Lumata2024_kTMV_TEMPO
+
+# TMV + cysteine: no file, and deliberately so. TMV has exactly one native
+# cysteine, Cys27, and the literature never conjugates it - researchers
+# engineer S123C or T103C instead, which is strong evidence it is buried.
+# Adding a native-cysteine TMV site would need a solvent-accessibility
+# calculation first, not a guess.
+#
+# NUMBERING NOTE: the review's Table 6 lists TMV tyrosine as "Y129", but
+# residue 129 in tmv_resall.pdb is ILE and residue 139 is TYR. The review also
+# writes "T153K" where our construct is T158K (153 and 158 are both THR, so
+# both are possible sites). K53/K68 and every Qbeta number match the review
+# exactly, so this is not a numbering-convention offset - Y129 appears to be a
+# typo for Y139. Our files are correct; do not "fix" them to match the paper.
+
+# --- Qbeta -------------------------------------------------------------------
+SITE  Qbeta  lys  native_K2_K13_K16  qb_cp1_lys.pdb,qb_cp2_lys.pdb,qb_cp3_lys.pdb  2,13,16  native  Hong2009_BSA_fluorescein,Prasuhn2007_Gd
+SITE  Qbeta  cys  native_C74_C80     qb_cp1_cys.pdb,qb_cp2_cys.pdb,qb_cp3_cys.pdb  74,80    native  Leung2017_polymers,Maurer2005_nicotine
+
+# Qbeta C74/C80 form inter-subunit disulfides. Conjugating them requires
+# reduction first and may destabilise the capsid - worth telling the user.
+#
+# Qbeta + tyrosine: NO entry. Qbeta has native Tyr62, Tyr89, Tyr99 and Tyr132,
+# but the review records no tyrosine conjugation for Qbeta at all. There is
+# also no qb_cp*_tyr.pdb, so ProcessPgnFile currently goes looking for a file
+# that does not exist and fails on a missing file rather than saying there is
+# no site. A registry lookup would report "no site recorded" instead.
+
+# --- Candidates for expansion (NOT verified - residue numbers missing) -------
+# MS2 is the best next capsid: 180 CP like Qbeta, so it reuses the Qbeta
+# assembly path, and it has a NUMBERED native site.
+#   CAPSID  MS2   180   Qbeta_capsid_maker.py  ...
+#   SITE  MS2  tyr  native_Y85  <coat protein>  85  native  Hooker2004_diazonium
+#
+# CCMV is also 180 CP, but the review gives its sites only as "Lysine" and
+# "Cysteine" with no residue numbers, so they must be sourced elsewhere first.
+#   CAPSID  CCMV  180   Qbeta_capsid_maker.py  ...
+#
+# CPMV (60 CP) and PVX (rod) likewise list unnumbered "Lysine"/"Cysteine".
+# P22 (420 CP) has NO native sites in the review - every P22 site listed
+# (S39C, K110C, K118C, V119C, S133C) is engineered, so P22 is a
+# mutant-sites-only capsid.
+#
+# Not covered by the current three amino acids: TMV's most-used sites in the
+# review are E97 and E106, glutamate carboxylates. Supporting carboxylate
+# conjugation would be a fourth amino acid, not another coat protein.
