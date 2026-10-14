@@ -2,6 +2,7 @@
 #include <wx/filedlg.h>
 #include <wx/choice.h>
 #include <wx/notebook.h>
+#include <wx/scrolwin.h>
 #include <wx/splitter.h>
 #include <wx/tglbtn.h>
 #include "FileProcessor.h"
@@ -178,12 +179,15 @@ MyFrame::MyFrame(const wxString& title)
                                wxDefaultPosition, wxSize(-1, 150), 
                                wxTE_MULTILINE | wxTE_READONLY);
     
-    mainSizer->Add(notebook, 1, wxEXPAND | wxALL, 5);
+    // Pages take two thirds of the height, the log one third; both grow with
+    // the window, and each page scrolls if it is ever taller than its share.
+    mainSizer->Add(notebook, 2, wxEXPAND | wxALL, 5);
     mainSizer->Add(new wxStaticText(this, wxID_ANY, "Status Log:"), 
                    0, wxLEFT | wxRIGHT | wxTOP, 5);
-    mainSizer->Add(statusText, 0, wxEXPAND | wxALL, 5);
+    mainSizer->Add(statusText, 1, wxEXPAND | wxALL, 5);
     
     SetSizer(mainSizer);
+    SetMinSize(wxSize(820, 600));
 
     // --- environment check: which python3 / obabel will the pipeline use? ---
     {
@@ -206,7 +210,8 @@ MyFrame::MyFrame(const wxString& title)
 
 wxPanel* MyFrame::CreateSetupPanel(wxNotebook* notebook)
 {
-    wxPanel* panel = new wxPanel(notebook);
+    wxScrolledWindow* panel = new wxScrolledWindow(notebook);
+    panel->SetScrollRate(0, 10);
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     sizer->AddSpacer(10);
@@ -418,69 +423,88 @@ wxPanel* MyFrame::CreateAtomConfigPanel(wxNotebook* notebook)
 
 wxPanel* MyFrame::CreateTopologyPanel(wxNotebook* notebook)
 {
-    wxPanel* panel = new wxPanel(notebook);
-    wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-    
-    sizer->AddSpacer(10);
-    
-    wxStaticBoxSizer* patchBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Patch Generation");
+    // Two columns: the step buttons, in run order, on the left; the CGenFF
+    // instructions and the optional charge override on the right. Stacking
+    // everything in one column pushed the last step below the status log.
+    wxScrolledWindow* panel = new wxScrolledWindow(notebook);
+    panel->SetScrollRate(0, 10);
+    wxBoxSizer* columns = new wxBoxSizer(wxHORIZONTAL);
+
+    // ── left column: the steps ──
+    wxBoxSizer* steps = new wxBoxSizer(wxVERTICAL);
+    steps->AddSpacer(10);
+
+    wxStaticBoxSizer* patchBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Step 1 - Patch Generation");
     wxButton* processPatchMakerButton = new wxButton(panel, ID_PATCH_MAKER, "Process Patch Maker");
     patchBox->Add(processPatchMakerButton, 0, wxALL | wxEXPAND, 5);
-    sizer->Add(patchBox, 0, wxALL | wxEXPAND, 10);
-    
-    wxStaticBoxSizer* naaMol2StrBox = new wxStaticBoxSizer(wxVERTICAL, panel, "NAA CGenFF Workflow");
-    wxStaticText* naaInstructionText = new wxStaticText(panel, wxID_ANY, 
-        "1. Download naa.mol2 and upload it to https://cgenff.silcsbio.com/\n"
-        "   *** Tick 'include parameters that are already in CGenFF' ***\n"
-        "   Without it the .str holds only the new, analogy-derived terms, and\n"
-        "   every other term must come from your local par_all36_cgenff.prm -\n"
-        "   so a newer service library than your local release breaks the run.\n"
-        "2. Import the returned zip here (naa.str is extracted)\n"
-        "LYSINE ONLY: a lysine modification also modifies the N-terminus.\n"
-        "   Repeat steps 1-2 for ntrm.mol2 -> ntrm.str. Both are required.");
-    naaInstructionText->Wrap(400);
-    naaMol2StrBox->Add(naaInstructionText, 0, wxALL, 5);
-    
+    steps->Add(patchBox, 0, wxALL | wxEXPAND, 10);
+
+    wxStaticBoxSizer* naaMol2StrBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Step 2 - CGenFF (naa, and ntrm for Lysine)");
     wxButton* downloadNAAMol2Button = new wxButton(panel, ID_DOWNLOAD_NAA_MOL2, "Download NAA.mol2");
     wxButton* uploadNAAStrButton = new wxButton(panel, ID_UPLOAD_NAA_STR, "Import CGenFF result (zip/str)");
-    naaMol2StrBox->Add(downloadNAAMol2Button, 0, wxALL | wxEXPAND, 5);
-    naaMol2StrBox->Add(uploadNAAStrButton, 0, wxALL | wxEXPAND, 5);
     wxButton* downloadNtrmMol2Button = new wxButton(panel, ID_DOWNLOAD_NTRM_MOL2, "Download ntrm.mol2 (Lysine runs)");
     wxButton* uploadNtrmStrButton = new wxButton(panel, ID_UPLOAD_NTRM_STR, "Import N-terminus CGenFF result (zip/str)");
+    naaMol2StrBox->Add(downloadNAAMol2Button, 0, wxALL | wxEXPAND, 5);
+    naaMol2StrBox->Add(uploadNAAStrButton, 0, wxALL | wxEXPAND, 5);
     naaMol2StrBox->Add(downloadNtrmMol2Button, 0, wxALL | wxEXPAND, 5);
     naaMol2StrBox->Add(uploadNtrmStrButton, 0, wxALL | wxEXPAND, 5);
+    steps->Add(naaMol2StrBox, 0, wxALL | wxEXPAND, 10);
 
-    // Optional step, so it sits to the side rather than in the main column:
-    // only molecules with chemistry CGenFF cannot type (a persistent radical is
-    // the usual case) need hand-curated charges. A run without an override file
-    // is unaffected.
-    wxBoxSizer* overrideRow = new wxBoxSizer(wxHORIZONTAL);
-    chargeOverrideLabel = new wxStaticText(panel, wxID_ANY,
-        "Optional: no charge override file selected.\n"
-        "Pick one only if CGenFF cannot type part of your\n"
-        "molecule (a radical, say). Applied automatically\n"
-        "during 'Create Novel Amino Acid'.");
-    chargeOverrideLabel->Wrap(260);
-    wxButton* applyOverridesButton = new wxButton(panel, ID_APPLY_CHARGE_OVERRIDES,
-        "Charge\noverride file...", wxDefaultPosition, wxSize(120, 40));
-    overrideRow->Add(chargeOverrideLabel, 1, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 5);
-    overrideRow->Add(applyOverridesButton, 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
-    naaMol2StrBox->Add(overrideRow, 0, wxEXPAND | wxTOP, 5);
-
-    sizer->Add(naaMol2StrBox, 0, wxALL | wxEXPAND, 10);
-    
-    wxStaticBoxSizer* topologyBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Novel Amino Acid Creation");
+    wxStaticBoxSizer* topologyBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Step 3 - Novel Amino Acid Creation");
     wxButton* createTopologyButton = new wxButton(panel, ID_CREATE_TOPOLOGY, "Create Novel Amino Acid");
     topologyBox->Add(createTopologyButton, 0, wxALL | wxEXPAND, 5);
-    sizer->Add(topologyBox, 0, wxALL | wxEXPAND, 10);
-    sizer->AddStretchSpacer();
-    panel->SetSizer(sizer);
+    wxStaticText* createNote = new wxStaticText(panel, wxID_ANY,
+        "Appends RESI NAA (and NPC) to the topology file and builds par_GUI.prm. "
+        "Re-run it after any Patch Maker run or CGenFF re-import.");
+    createNote->Wrap(300);
+    topologyBox->Add(createNote, 0, wxLEFT | wxRIGHT | wxBOTTOM, 5);
+    steps->Add(topologyBox, 0, wxALL | wxEXPAND, 10);
+    steps->AddStretchSpacer();
+
+    // ── right column: instructions and the optional override ──
+    wxBoxSizer* notes = new wxBoxSizer(wxVERTICAL);
+    notes->AddSpacer(10);
+
+    wxStaticBoxSizer* instrBox = new wxStaticBoxSizer(wxVERTICAL, panel, "CGenFF instructions");
+    wxStaticText* naaInstructionText = new wxStaticText(panel, wxID_ANY,
+        "1. Download naa.mol2 and upload it to https://cgenff.silcsbio.com/ "
+        "*** Tick 'include parameters that are already in CGenFF' *** "
+        "Without it the .str holds only the new, analogy-derived terms and every "
+        "other term must come from your local par_all36_cgenff.prm, so a newer "
+        "service library than your local release breaks the run.\n\n"
+        "2. Import the returned zip here (naa.str is extracted).\n\n"
+        "LYSINE ONLY: a lysine modification also modifies the N-terminus. "
+        "Repeat steps 1-2 for ntrm.mol2 -> ntrm.str. Both are required.");
+    naaInstructionText->Wrap(500);
+    instrBox->Add(naaInstructionText, 0, wxALL, 5);
+    notes->Add(instrBox, 0, wxALL | wxEXPAND, 10);
+
+    // Optional step: only molecules with chemistry CGenFF cannot type (a
+    // persistent radical is the usual case) need hand-curated charges. A run
+    // without an override file is unaffected.
+    wxStaticBoxSizer* overrideBox = new wxStaticBoxSizer(wxVERTICAL, panel, "Optional - charge overrides");
+    chargeOverrideLabel = new wxStaticText(panel, wxID_ANY,
+        "No charge override file selected.\n"
+        "Pick one only if CGenFF cannot type part of your molecule "
+        "(a radical, say). Applied during 'Create Novel Amino Acid'.");
+    chargeOverrideLabel->Wrap(500);
+    wxButton* applyOverridesButton = new wxButton(panel, ID_APPLY_CHARGE_OVERRIDES,
+        "Charge override file...");
+    overrideBox->Add(chargeOverrideLabel, 0, wxALL, 5);
+    overrideBox->Add(applyOverridesButton, 0, wxALL, 5);
+    notes->Add(overrideBox, 0, wxALL | wxEXPAND, 10);
+    notes->AddStretchSpacer();
+
+    columns->Add(steps, 0, wxEXPAND);
+    columns->Add(notes, 1, wxEXPAND);
+    panel->SetSizer(columns);
     return panel;
 }
 
 wxPanel* MyFrame::CreateCapsidPanel(wxNotebook* notebook)
 {
-    wxPanel* panel = new wxPanel(notebook);
+    wxScrolledWindow* panel = new wxScrolledWindow(notebook);
+    panel->SetScrollRate(0, 10);
     wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
     
     sizer->AddSpacer(10);
@@ -855,7 +879,7 @@ void MyFrame::OnSelectChargeOverride(wxCommandEvent& event)
         chargeOverrideLabel->SetLabel("Charge overrides WILL be applied from:\n" +
                                       wxFileName(chargeOverrideFile).GetFullName() +
                                       "\nduring 'Create Novel Amino Acid'.");
-        chargeOverrideLabel->Wrap(260);
+        chargeOverrideLabel->Wrap(500);
         chargeOverrideLabel->GetParent()->Layout();
     }
     statusText->AppendText("Charge override file selected: " + chargeOverrideFile +
