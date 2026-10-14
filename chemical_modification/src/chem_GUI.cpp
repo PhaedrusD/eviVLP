@@ -1097,17 +1097,53 @@ bool MyFrame::StageNtrmReference()
 
 // VMD returns 0 even when psfgen aborts inside the script, so success is
 // judged by whether the file the script was meant to write actually appeared.
+// True when topology file `rtf` defines "RESI <name>" (a RESI line, not PRES).
+static bool RtfHasResidue(const wxString& rtf, const wxString& name)
+{
+    wxTextFile f;
+    if (!wxFileExists(rtf) || !f.Open(rtf)) return false;
+    bool found = false;
+    for (size_t i = 0; i < f.GetLineCount() && !found; i++) {
+        wxString l = f.GetLine(i);
+        l.Trim(false);
+        if (!l.StartsWith("RESI")) continue;
+        wxArrayString tok = wxSplit(l, ' ', '\0');
+        found = (tok.GetCount() >= 2 && tok[1].Upper() == name.Upper());
+    }
+    f.Close();
+    return found;
+}
+
 int MyFrame::RunVmd(const wxString& command, const wxString& expectedOutput)
 {
     if (!expectedOutput.IsEmpty() && wxFileExists(expectedOutput)) wxRemoveFile(expectedOutput);
-    int rc = system(command.mb_str());
-    if (rc != 0) return rc;
-    if (!expectedOutput.IsEmpty() && !wxFileExists(expectedOutput)) {
+    // Capture VMD/psfgen output so the failure reason reaches the status pane
+    // instead of only the terminal the GUI was launched from.
+    wxString logFile = expectedOutput.IsEmpty()
+        ? wxString("vmd_view.log")
+        : wxFileName(expectedOutput).GetName() + "_psfgen.log";
+    int rc = system((command + " > " + logFile + " 2>&1").mb_str());
+    bool missing = !expectedOutput.IsEmpty() && !wxFileExists(expectedOutput);
+    if (rc == 0 && !missing) return 0;
+    if (missing)
         statusText->AppendText("Error: VMD finished but did not write " + expectedOutput +
-                               " - psfgen failed inside the script (look for 'add atom failed' / 'unknown atom type' in the terminal output).\n");
-        return 1;
+                               " - psfgen failed inside the script.\n");
+    // Pull the psfgen error lines out of the log before showing its tail.
+    wxTextFile log;
+    if (wxFileExists(logFile) && log.Open(logFile)) {
+        int shown = 0;
+        for (size_t i = 0; i < log.GetLineCount() && shown < 6; i++) {
+            const wxString& l = log.GetLine(i);
+            if (l.Contains("unknown residue") || l.Contains("unknown atom type") ||
+                l.Contains("failed") || l.Contains("ERROR") || l.Contains("MOLECULE DESTROYED")) {
+                statusText->AppendText("  psfgen: " + l + "\n");
+                shown++;
+            }
+        }
+        log.Close();
     }
-    return 0;
+    ShowLogTail(logFile, 10);
+    return rc != 0 ? rc : 1;
 }
 
 void MyFrame::OnProcessFile(wxCommandEvent& event)
@@ -1667,6 +1703,26 @@ bool MyFrame::BuildMonomers()
         wxMessageBox("TMV has no coat-protein template for " + selectedAminoAcid + ".",
                      "TMV template missing", wxOK | wxICON_ERROR);
         return false;
+    }
+
+    // The pgn names RESI NAA (and RESI NPC when the N-terminus is modified).
+    // Patch Maker strips both from the topology file so it can be re-run, and
+    // only 'Create Novel Amino Acid' appends them again; catch the common
+    // step-order mistake here instead of letting psfgen fail on it.
+    {
+        const wxString rtf = "top_all36_cgenff_CBD.rtf";
+        wxArrayString missing;
+        if (!RtfHasResidue(rtf, "NAA")) missing.Add("NAA");
+        if (wxFileExists("ntrm_clean.str") && !RtfHasResidue(rtf, "NPC")) missing.Add("NPC");
+        if (!missing.IsEmpty()) {
+            statusText->AppendText("Error: " + rtf + " has no RESI " + wxJoin(missing, '/') +
+                                   ". Run 'Create Novel Amino Acid' (it appends the modified "
+                                   "residue topologies) before building the monomer.\n");
+            wxMessageBox("The topology file does not contain RESI " + wxJoin(missing, '/') +
+                         ".\nRun 'Create Novel Amino Acid' first.", "Topology incomplete",
+                         wxOK | wxICON_ERROR);
+            return false;
+        }
     }
 
     wxArrayString stems = MonomerStems();
