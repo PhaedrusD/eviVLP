@@ -1,0 +1,15 @@
+COMPND    BBQ  Qbeta N-terminal Ala reference; names match RESI BBQ in top_all36_cgenff_CBD.rtf
+ATOM      1  N   BBQ A   1      -0.787  -0.262  -0.084  1.00  0.00           N
+ATOM      2  CA  BBQ A   1       0.660  -0.173  -0.222  1.00  0.00           C
+ATOM      3  C   BBQ A   1       1.284  -1.338   0.563  1.00  0.00           C
+ATOM      4  O   BBQ A   1       0.619  -2.169   1.180  1.00  0.00           O
+ATOM      5  HA  BBQ A   1       0.912  -0.294  -1.282  1.00  0.00           H
+ATOM      6  CB  BBQ A   1       1.183   1.164   0.290  1.00  0.00           C
+ATOM      7  HB1 BBQ A   1       0.726   2.001  -0.247  1.00  0.00           H
+ATOM      8  HB2 BBQ A   1       0.961   1.291   1.356  1.00  0.00           H
+ATOM      9  HB3 BBQ A   1       2.269   1.239   0.168  1.00  0.00           H
+ATOM     10  HN1 BBQ A   1      -1.026  -1.023   0.584  1.00  0.00           H
+ATOM     11  HN2 BBQ A   1      -1.158   0.642   0.273  1.00  0.00           H
+ATOM     12  HN3 BBQ A   1      -1.212  -0.469  -1.010  1.00  0.00           H
+ATOM     13  HX  BBQ A   1       2.382  -1.409   0.556  1.00  0.00           H
+END

@@ -43,7 +43,10 @@ def main():
         for i in range(60):
             seg = number_to_letters(group_offset + i)
             pdb = f"{prefix}_com{i}.pdb"
-            lines.append(f"segment {seg} {{pdb {pdb}; first NONE{slot}}}")
+            # The Qbeta capsid has always been built with "first NONE" (no NTER
+            # patch); the NPC slot already carries its own "first NONE".
+            seg_opts = slot if slot else "; first NONE"
+            lines.append(f"segment {seg} {{pdb {pdb}{seg_opts}}}")
             lines.append(f"coordpdb {pdb} {seg}")
 
     lines += [

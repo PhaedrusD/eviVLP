@@ -1,0 +1,14 @@
+PRES ZPP              0.000 ! N-terminal Ala (RESI BBQ) + drug: keep HN1, remove HN2/HN3 -> neutral sec. amine
+GROUP
+ATOM 1N     NG311  -0.570 ! 
+ATOM 1CA    CG311   0.150 ! 
+GROUP
+2i**1
+2i**2
+2i**3
+DELETE ATOM 1HN2
+DELETE ATOM 1HN3
+DELETE ATOM 2t*4
+DELETE ATOM 2t*5
+DELETE ATOM 2t*6
+BOND 1N  2t*1

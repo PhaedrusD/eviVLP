@@ -1924,9 +1924,26 @@ void MyFrame::OnMinimizeCapsid(wxCommandEvent& event)
     // differ between Qbeta (cubic 320 Å) and TMV (rectangular rod 209x209x121 Å).
     bool tmv = (vlpTypeChoice->GetSelection() == 1);
     wxString confFile  = tmv ? "TMV_minimize.conf"  : "minimize.conf";
+    wxString wbPdb     = tmv ? "TMV_naa_capsid_wb.pdb" : "QB_naa_capsid_wb.pdb";
     wxString logFile   = "minimize_capsid.log";
 
     statusText->AppendText("Minimize Capsid: using " + confFile + "\n");
+
+    if (!wxFileExists(wbPdb)) {
+        statusText->AppendText("Error: " + wbPdb + " not found. Run Create/View Capsid "
+                               "first (it solvates and ionizes the capsid).\n");
+        return;
+    }
+    // NAMD does not read CRYST1, so derive the periodic cell from the solvated
+    // PDB itself (box from CRYST1, origin from the geometric centre). The conf
+    // sources the <stem>_cell.namd this writes and falls back to its literal
+    // values if the file is missing.
+    wxString cellCmd = "python3 capsid_cell.py " + wbPdb;
+    statusText->AppendText("Running command: " + cellCmd + "\n");
+    if (system(cellCmd.mb_str()) != 0) {
+        statusText->AppendText("Warning: capsid_cell.py failed; " + confFile +
+                               " will use its built-in cell values.\n");
+    }
 
     wxString command9 = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 " +
                         confFile + " > " + logFile + " 2>&1";
@@ -1956,10 +1973,15 @@ void MyFrame::OnZipFiles(wxCommandEvent& event)
                            vlpTypeChoice->GetString(vlpTypeChoice->GetSelection()) + ")\n");
 
     wxArrayString filesToZip;
-    filesToZip.Add("minimize.conf");
+    filesToZip.Add(capsidStem == "TMV_naa_capsid_wb" ? "TMV_minimize.conf" : "minimize.conf");
+    if (wxFileExists(capsidStem + "_cell.namd"))
+        filesToZip.Add(capsidStem + "_cell.namd");   // periodic cell the conf sources
     filesToZip.Add(capsidStem + ".psf");
     filesToZip.Add(capsidStem + ".pdb");
     filesToZip.Add("par_GUI.prm");          // novel CGenFF + cross-FF parameters
+    filesToZip.Add("par_all36_cgenff.prm"); // the other three parameter files the conf reads
+    filesToZip.Add("par_all36m_prot.prm");
+    filesToZip.Add("par_water_ions.inp");
     filesToZip.Add("top_all36_cgenff_CBD.rtf");  // RESI NAA / RESI NPC topology
     
     bool allFilesExist = true;
