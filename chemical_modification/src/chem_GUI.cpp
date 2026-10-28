@@ -17,6 +17,9 @@
 #include <wx/filename.h>
 #include <wx/textfile.h>
 #include <wx/file.h>
+#include <wx/thread.h>
+#include <wx/filefn.h>
+#include <wx/utils.h>
 
 class MyFrame : public wxFrame
 {
@@ -69,6 +72,8 @@ private:
     bool RunOrientStep();   // fill *T1/*T3 in the orient script, run it, reset it
     int  RunVmd(const wxString& command, const wxString& expectedOutput);
     wxString NtrmVariant();          // "ntrm" (Ala, Qbeta) or "ntrm_ser" (Ser, TMV)
+    wxString vmdCmd;                 // resolved at startup, see FindVmd()
+    wxString namdCmd;                // resolved at startup, see FindNamd(); includes +p<cores>
     bool StageNtrmReference();       // copy the right model residue to ntrm_ref.pdb
     void OnCreateTopology(wxCommandEvent& event);
     void OnDownloadNAAMol2(wxCommandEvent& event);
@@ -157,6 +162,79 @@ wxBEGIN_EVENT_TABLE(MyFrame, wxFrame)
     EVT_BUTTON(ID_CLEAR_DELETED, MyFrame::OnClearDeletedSelection)
 wxEND_EVENT_TABLE()
 
+// ── External tool discovery ──────────────────────────────────────────────────
+// The GUI shells out to VMD (psfgen, viewing) and NAMD (minimisation). Rather
+// than bake one machine's install paths into the binary, resolve each tool at
+// startup, in this order:
+//   1. environment variable  EVIVLP_VMD / EVIVLP_NAMD  (full path to the program)
+//   2. the PATH               vmd / namd3
+//   3. the usual install spots on macOS (any version)
+//   4. the paths the GUI was developed with, as a last resort
+// The startup log reports what was chosen so a wrong pick is visible at once.
+
+static wxString ShellQuote(const wxString& path)
+{
+    wxString q = path;
+    q.Replace("\"", "\\\"");
+    return "\"" + q + "\"";
+}
+
+static wxString FirstMatch(const wxString& pattern, const wxString& suffix = "")
+{
+    // wxFindFirstFile logs an error dialog when the parent folder is absent
+    // (no ~/Downloads, say), so check the folder first and silence the rest.
+    if (!wxDirExists(wxFileName(pattern).GetPath())) return "";
+    wxLogNull quiet;
+    wxString hit = wxFindFirstFile(pattern, wxDIR | wxFILE);
+    wxString best;
+    while (!hit.IsEmpty()) {
+        wxString cand = hit + suffix;
+        if (wxFileExists(cand) && (best.IsEmpty() || cand > best)) best = cand; // newest version sorts last
+        hit = wxFindNextFile();
+    }
+    return best;
+}
+
+static wxString FindOnPath(const wxString& exe)
+{
+    wxPathList pl;
+    pl.AddEnvList("PATH");
+    return pl.FindAbsoluteValidPath(exe);
+}
+
+static wxString FindVmd(wxString& how)
+{
+    wxString env;
+    if (wxGetEnv("EVIVLP_VMD", &env) && wxFileExists(env)) { how = "EVIVLP_VMD"; return env; }
+    wxString p = FindOnPath("vmd");
+    if (!p.IsEmpty()) { how = "PATH"; return p; }
+    p = FirstMatch("/Applications/VMD*.app", "/Contents/MacOS/startup.command.csh");
+    if (!p.IsEmpty()) { how = "/Applications"; return p; }
+    p = FirstMatch(wxGetHomeDir() + "/Applications/VMD*.app", "/Contents/MacOS/startup.command.csh");
+    if (!p.IsEmpty()) { how = "~/Applications"; return p; }
+    how = "default (not verified)";
+    return "/Applications/VMD 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh";
+}
+
+static wxString FindNamd(wxString& how)
+{
+    wxString env;
+    if (wxGetEnv("EVIVLP_NAMD", &env) && wxFileExists(env)) { how = "EVIVLP_NAMD"; return env; }
+    wxString p = FindOnPath("namd3");
+    if (!p.IsEmpty()) { how = "PATH"; return p; }
+    p = FindOnPath("namd2");
+    if (!p.IsEmpty()) { how = "PATH (namd2)"; return p; }
+    const wxString home = wxGetHomeDir();
+    const wxString roots[] = { home + "/Downloads/NAMD*", home + "/Applications/NAMD*",
+                               "/Applications/NAMD*", "/opt/NAMD*", "/usr/local/NAMD*" };
+    for (const wxString& r : roots) {
+        p = FirstMatch(r, "/namd3");
+        if (!p.IsEmpty()) { how = r; return p; }
+    }
+    how = "default (not verified)";
+    return home + "/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3";
+}
+
 MyFrame::MyFrame(const wxString& title)
     : wxFrame(NULL, wxID_ANY, title, wxDefaultPosition, wxSize(900, 800)),
       processor("IC_table_noCGENFF.cpp")
@@ -193,6 +271,16 @@ MyFrame::MyFrame(const wxString& title)
     {
         wxArrayString out, err;
         statusText->AppendText("Working directory: " + wxGetCwd() + "\n");
+        wxString vmdHow, namdHow;
+        wxString vmdPath  = FindVmd(vmdHow);
+        wxString namdPath = FindNamd(namdHow);
+        vmdCmd  = ShellQuote(vmdPath);
+        int cores = wxThread::GetCPUCount();
+        namdCmd = ShellQuote(namdPath) + wxString::Format(" +p%d", cores > 0 ? cores : 4);
+        statusText->AppendText((wxFileExists(vmdPath) ? "VMD:  " : "WARNING: VMD not found - set EVIVLP_VMD. Tried: ")
+                               + vmdPath + "  [" + vmdHow + "]\n");
+        statusText->AppendText((wxFileExists(namdPath) ? "NAMD: " : "WARNING: NAMD not found - set EVIVLP_NAMD. Tried: ")
+                               + namdPath + "  [" + namdHow + "]\n");
         if (wxExecute("python3 -c \"import sys, numpy; print(sys.executable, 'numpy', numpy.__version__)\"",
                       out, err, wxEXEC_SYNC) == 0 && !out.IsEmpty())
             statusText->AppendText("python3 OK: " + out[0] + "\n");
@@ -1321,7 +1409,7 @@ void MyFrame::OnProcessPatchMaker(wxCommandEvent& event)
             processor.ResetPatchMakerFile(std::string(selectedAminoAcid.mb_str()));
             statusText->AppendText("Patch maker file reset completed.\n");
             
-            wxString vmdCommand = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e patched_" + aminoAcidAbbrev + ".pgn";
+            wxString vmdCommand = vmdCmd + " -dispdev text -e patched_" + aminoAcidAbbrev + ".pgn";
             statusText->AppendText("Running VMD command: " + vmdCommand + "\n");
             
             int vmdResult = RunVmd(vmdCommand, "patched.pdb");
@@ -1370,7 +1458,7 @@ void MyFrame::OnProcessPatchMaker(wxCommandEvent& event)
                 // Reset the ntrm patch maker template
                 processor.ResetPatchMakerFile("N-Terminus");
 
-                wxString ntrmVmdCommand = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e patched_ntrm.pgn";
+                wxString ntrmVmdCommand = vmdCmd + " -dispdev text -e patched_ntrm.pgn";
                 statusText->AppendText("Running N-terminus VMD command: " + ntrmVmdCommand + "\n");
                 
                 int ntrmVmdResult = RunVmd(ntrmVmdCommand, "ntrm.pdb");
@@ -1752,8 +1840,7 @@ bool MyFrame::BuildMonomers()
     wxArrayString stems = MonomerStems();
     for (size_t i = 0; i < stems.GetCount(); i++) {
         wxString pgn = tmv ? "TMV_naa.pgn" : (stems[i] + ".pgn");
-        wxString cmd = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/"
-                       "startup.command.csh -dispdev text -e " + pgn;
+        wxString cmd = vmdCmd + " -dispdev text -e " + pgn;
         statusText->AppendText("Running command: " + cmd + "\n");
         if (RunVmd(cmd, stems[i] + ".pdb") != 0) {
             statusText->AppendText("Error: " + pgn + " failed.\n");
@@ -1832,7 +1919,7 @@ void MyFrame::CreateViewQbeta()
         return;
     }
 
-    wxString assemble = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e " "QB_capsid.pgn";
+    wxString assemble = vmdCmd + " -dispdev text -e " "QB_capsid.pgn";
     statusText->AppendText("Running command: " + assemble + "\n");
     if (RunVmd(assemble, "capsid_naa.pdb") != 0) {
         statusText->AppendText("Error: QB_capsid.pgn failed.\n");
@@ -1840,7 +1927,7 @@ void MyFrame::CreateViewQbeta()
     }
     statusText->AppendText("QB_capsid.pgn executed successfully.\n");
 
-    wxString view = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -e capsid_zoom_naa.tcl";
+    wxString view = vmdCmd + " -e capsid_zoom_naa.tcl";
     statusText->AppendText("Running command: " + view + "\n");
     if (RunVmd(view, "") != 0) {
         statusText->AppendText("Error: capsid_zoom_naa.tcl failed.\n");
@@ -1867,7 +1954,7 @@ void MyFrame::CreateViewTMV()
         return;
     }
 
-    wxString assemble = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -dispdev text -e " "TMV_all_out.pgn";
+    wxString assemble = vmdCmd + " -dispdev text -e " "TMV_all_out.pgn";
     statusText->AppendText("Running command: " + assemble + "\n");
     if (RunVmd(assemble, "TMV_naa_capsid.pdb") != 0) {
         statusText->AppendText("Error: TMV_all_out.pgn failed.\n");
@@ -1875,7 +1962,7 @@ void MyFrame::CreateViewTMV()
     }
     statusText->AppendText("TMV_all_out.pgn executed successfully.\n");
 
-    wxString view = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh -e capsid_zoom_naa_TMV.tcl";
+    wxString view = vmdCmd + " -e capsid_zoom_naa_TMV.tcl";
     statusText->AppendText("Running command: " + view + "\n");
     if (RunVmd(view, "") != 0) {
         statusText->AppendText("Error: capsid_zoom_naa_TMV.tcl failed.\n");
@@ -1929,7 +2016,7 @@ bool MyFrame::MinimizeOneMonomer(const wxString& stem)
     // redirect; passing it as a second argument gives NAMD two config files and
     // it writes nothing at all.
     wxString logFile = stem + "_min.log";
-    wxString namd = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 "
+    wxString namd = namdCmd + " "
                     "minimize_monomer.conf > " + logFile + " 2>&1";
     statusText->AppendText("Running command: " + namd + "\n");
     int rc = system(namd.mb_str());
@@ -1959,7 +2046,7 @@ bool MyFrame::MinimizeOneMonomer(const wxString& stem)
         wxFile out("coor_to_pdb.tcl", wxFile::write);
         out.Write(tcl);
     }
-    wxString vmd = "/Applications/VMD\\ 1.9.4a57-arm64-Rev12.app/Contents/MacOS/startup.command.csh "
+    wxString vmd = vmdCmd + " "
                    "-dispdev text -e coor_to_pdb.tcl";
     statusText->AppendText("Running command: " + vmd + "\n");
     system(vmd.mb_str());
@@ -2025,7 +2112,7 @@ void MyFrame::OnMinimizeCapsid(wxCommandEvent& event)
                                " will use its built-in cell values.\n");
     }
 
-    wxString command9 = "~/Downloads/NAMD_3.0b5_MacOS-universal-multicore/namd3 +p8 " +
+    wxString command9 = namdCmd + " " +
                         confFile + " > " + logFile + " 2>&1";
     statusText->AppendText("Running command: " + command9 + "\n");
 

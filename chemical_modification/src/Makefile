@@ -12,6 +12,10 @@ CXX      := g++
 CXXSTD   := -std=c++17
 WX_CXX   := $(shell wx-config --cxxflags)
 WX_LIBS  := $(shell wx-config --libs gl,core,base)
+# macOS gets OpenGL through wx-config's framework flags; Linux needs the libs named.
+ifeq ($(shell uname -s),Linux)
+WX_LIBS  += -lGL -lGLU
+endif
 
 GUI_SRC  := chem_GUI.cpp FileProcessor.cpp MoleculeViewer.cpp
 

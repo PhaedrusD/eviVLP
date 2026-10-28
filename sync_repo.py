@@ -37,6 +37,9 @@ usage:
   python3 sync_repo.py --pull          repo -> flat working folder
   python3 sync_repo.py --untracked     also list working-folder-only files
   python3 sync_repo.py --gui PATH      point at a different working folder
+  python3 sync_repo.py --module NAME   only this module (chemical_modification
+                                       or genetic_modification); with --gui,
+                                       keeps the other module out of that folder
   --force                              copy even when the destination is newer
   --dry-run                            with --push/--pull, say what would happen
 """
@@ -110,10 +113,22 @@ def main():
         i = argv.index("--gui")
         if i + 1 >= len(argv): sys.exit("--gui needs a path")
         gui_override = argv[i + 1]
+    only = None
+    if "--module" in argv:
+        i = argv.index("--module")
+        if i + 1 >= len(argv): sys.exit("--module needs a name")
+        only = argv[i + 1]
+        if only not in [m for m, _ in MODULES]:
+            sys.exit(f"--module must be one of: {', '.join(m for m, _ in MODULES)}")
 
     drift = 0
     for module, gui_rel in MODULES:
+        if only and module != only:
+            continue
         if gui_override: gui_rel = gui_override
+        if pull and not dry:
+            # a first --pull into a fresh folder is how a new install starts
+            os.makedirs(os.path.normpath(os.path.join(HERE, gui_rel)), exist_ok=True)
         rows, gui_dir, collisions = collect(HERE, module, gui_rel)
         if rows is None:
             print(f"\n{module}  ->  {gui_dir}\n  working folder not found, skipped")

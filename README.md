@@ -24,6 +24,19 @@ Each project contains:
 - `tcl/` — VMD / NAMD Tcl scripts
 - `data/` — force-field templates and topology files (chemical project only)
 
+## Quick start (chemical modification GUI)
+
+```
+git clone https://github.com/PhaedrusD/eviVLP.git
+cd eviVLP
+./setup.sh                 # run folder defaults to ~/eviVLP_run; pass a path to choose
+cd ~/eviVLP_run && ./GUI
+```
+
+`setup.sh` checks the build prerequisites (installing them with Homebrew on macOS when it can), lays the repository's `src/`, `scripts/`, `tcl/` and `data/` out as the single flat run folder the GUI works in, builds the GUI and the internal-coordinate generators there, and reports where it found VMD and NAMD. Re-running it after a `git pull` refreshes the run folder without overwriting files you have edited there.
+
+VMD and NAMD are located at startup — from `EVIVLP_VMD` / `EVIVLP_NAMD` if set, otherwise from the PATH, otherwise from the usual install locations (`/Applications/VMD*.app`, `~/Downloads/NAMD*`). The status log's first lines show which were chosen. A test input is provided in `case_studies/case_study1_TMV_TEMPO/inputs/` (`TEMPO.pdb`, with `nitroxide_overrides.prm` as the optional charge-override file).
+
 ## Requirements
 
 - wxWidgets 3.x
