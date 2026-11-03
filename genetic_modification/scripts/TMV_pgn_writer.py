@@ -1,3 +1,4 @@
+import os
 def number_to_letters(n):
     """Convert a number to a letter combination (e.g., 0 -> AA, 1 -> AB, ..., 25 -> AZ, 26 -> BA, etc.)."""
     result = []
@@ -10,7 +11,7 @@ def number_to_letters(n):
     return ''.join(reversed(result))
 
 def generate_vmd_script():
-    base_dir = "/Users/carydarwin/eviVLP/evi_gen_GUI"
+    base_dir = os.getcwd()  # the flat run folder the GUI launches scripts from
     output_file = f"{base_dir}/TMV_capsid.pgn"
     
     # Build the script content

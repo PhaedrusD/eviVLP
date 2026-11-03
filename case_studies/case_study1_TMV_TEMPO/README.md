@@ -19,7 +19,7 @@ In `inputs/`:
 |---|---|
 | `TEMPO.pdb` | 4-amino-TEMPO(H+) with a 6-aminohexanoic acid linker, 50 atoms, all hydrogens; linker amine protonated, so the conjugated residue is +1 |
 | `fix_tempo_input.py` | how `TEMPO.pdb` was repaired; see "Repairing the input structure" |
-| `nitroxide_overrides.prm` | hand-curated aminoxyl radical parameters; load after `par_GUI.prm` |
+| `nitroxide_overrides.prm` | hand-curated aminoxyl radical charges and parameters; select it in the GUI as the charge override file |
 | `fix_atom_naming.py` | reconciles PDB atom names with the stream file |
 | `tmv_K158.pdb` | the T158K coat protein; see "The mutated site" below |
 | `TEMPO.mol2` | **stale** — 43-atom upload, predates the methyl fix |
@@ -181,8 +181,10 @@ directly.
 `OG311` is borrowed only for its oxygen vdW (`eps -0.1921`, `Rmin/2 1.7650`);
 the bonded terms above replace the hydroxyl geometry with nitroxide geometry.
 The full set, with provenance and the transfer rule for the charge group, is
-in `inputs/nitroxide_overrides.prm`. Load it after
-`par_GUI.prm`.
+in `inputs/nitroxide_overrides.prm`. Select it with the GUI's "Charge override
+file..." button (tab 3) before Create Novel Amino Acid: the GUI applies the
+charge block to the stream file and copies the file to `charge_overrides.prm`
+in the run folder, which every minimise conf reads after `par_GUI.prm`.
 
 **Citation (confirmed).** D. Sezer, J. H. Freed and B. Roux,
 *J. Phys. Chem. B* **2008**, *112*, 5755-5767. Lumata et al. cites this as

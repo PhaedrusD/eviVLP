@@ -963,6 +963,15 @@ void MyFrame::OnSelectChargeOverride(wxCommandEvent& event)
     if (openDialog.ShowModal() == wxID_CANCEL) return;
 
     chargeOverrideFile = openDialog.GetPath();
+    // The file is two things: a charge record (applied to the stream file by
+    // apply_charge_overrides.py) and a CHARMM parameter file. The minimise
+    // confs read charge_overrides.prm after par_GUI.prm when it exists, so a
+    // copy under that fixed name is what makes the bonded terms reach NAMD.
+    if (!wxCopyFile(chargeOverrideFile, "charge_overrides.prm", true))
+        statusText->AppendText("Warning: could not copy the override file to charge_overrides.prm; "
+                               "its bonded parameters will not reach NAMD.\n");
+    else
+        statusText->AppendText("Copied to charge_overrides.prm (read by the minimise confs after par_GUI.prm).\n");
     if (chargeOverrideLabel) {
         chargeOverrideLabel->SetLabel("Charge overrides WILL be applied from:\n" +
                                       wxFileName(chargeOverrideFile).GetFullName() +
@@ -2146,6 +2155,8 @@ void MyFrame::OnZipFiles(wxCommandEvent& event)
     filesToZip.Add(capsidStem + ".psf");
     filesToZip.Add(capsidStem + ".pdb");
     filesToZip.Add("par_GUI.prm");          // novel CGenFF + cross-FF parameters
+    if (wxFileExists("charge_overrides.prm"))
+        filesToZip.Add("charge_overrides.prm"); // optional hand-curated parameters
     filesToZip.Add("par_all36_cgenff.prm"); // the other three parameter files the conf reads
     filesToZip.Add("par_all36m_prot.prm");
     filesToZip.Add("par_water_ions.inp");

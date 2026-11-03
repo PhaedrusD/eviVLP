@@ -8,7 +8,7 @@ lines = [
 ]
 
 # Write the initial lines to the file
-file_path = '/Users/carydarwin/eviVLP/evi_gen_GUI/QB_capsid.pgn'
+file_path = 'QB_capsid.pgn'
 with open(file_path, 'w') as f:
     for line in lines:
         f.write(line + '\n')

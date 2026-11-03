@@ -168,9 +168,9 @@ def main():
     parser = PDBParser(PERMISSIVE=True, QUIET=True)
 
     # Process TMV structure
-    input_pdb = "/Users/carydarwin/eviVLP/evi_gen_GUI/TMV_template.pdb"
-    matrix_file = "/Users/carydarwin/eviVLP/evi_gen_GUI/matrix_TMV.txt"
-    output_dir = "/Users/carydarwin/eviVLP/evi_gen_GUI"
+    input_pdb = "TMV_template.pdb"
+    matrix_file = "matrix_TMV.txt"
+    output_dir = "."
     
     print("="*60)
     print("PROCESSING TMV CAPSID")
@@ -194,7 +194,7 @@ def main():
     print("="*60)
     
     try:
-        data_p2 = parser.get_structure("p2_structure", "/Users/carydarwin/eviVLP/evi_gen_GUI/P2_nu.pdb")
+        data_p2 = parser.get_structure("p2_structure", "P2_nu.pdb")
         process_protein(data_p2, matrix_file, "TMV_patch")
         print("P2_nu protein processing completed successfully!")
     except Exception as e:

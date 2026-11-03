@@ -46,12 +46,17 @@ for tool in wx-config:wxwidgets obabel:open-babel python3:python; do
         warn "$exe not found - install package '$pkg' and re-run."; exit 1
     fi
 done
-if python3 -c "import numpy" >/dev/null 2>&1; then
-    ok "numpy $(python3 -c 'import numpy; print(numpy.__version__)')"
-else
-    echo "  installing numpy..."
-    python3 -m pip install --user numpy || python3 -m pip install --user --break-system-packages numpy
-fi
+# Python packages the pipeline scripts import: NumPy throughout, Biopython in
+# the capsid makers (Bio.PDB). MDAnalysis is needed only by the genetic GUI.
+for mod in numpy:numpy Bio:biopython; do
+    imp="${mod%%:*}"; pkg="${mod##*:}"
+    if python3 -c "import $imp" >/dev/null 2>&1; then
+        ok "python package $pkg"
+    else
+        echo "  installing $pkg..."
+        python3 -m pip install --user "$pkg" || python3 -m pip install --user --break-system-packages "$pkg"
+    fi
+done
 
 echo
 echo "2. Run folder (flat layout of chemical_modification/{src,scripts,tcl,data})"
