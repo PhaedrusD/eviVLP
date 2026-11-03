@@ -35,7 +35,25 @@ cd ~/eviVLP_run && ./GUI
 
 `setup.sh` checks the build prerequisites (installing them with Homebrew on macOS when it can), lays the repository's `src/`, `scripts/`, `tcl/` and `data/` out as the single flat run folder the GUI works in, builds the GUI and the internal-coordinate generators there, and reports where it found VMD and NAMD. Re-running it after a `git pull` refreshes the run folder without overwriting files you have edited there.
 
-VMD and NAMD are located at startup — from `EVIVLP_VMD` / `EVIVLP_NAMD` if set, otherwise from the PATH, otherwise from the usual install locations (`/Applications/VMD*.app`, `~/Downloads/NAMD*`). The status log's first lines show which were chosen. A test input is provided in `case_studies/case_study1_TMV_TEMPO/inputs/` (`TEMPO.pdb`, with `nitroxide_overrides.prm` as the optional charge-override file).
+VMD and NAMD are located at startup — from `EVIVLP_VMD` / `EVIVLP_NAMD` if set, otherwise from the PATH, otherwise from the usual install locations (`/Applications/VMD*.app`, `~/Downloads/NAMD*`). The status log's first lines show which were chosen.
+
+To update later: `git pull` in the clone, then `./setup.sh` again.
+
+## Case studies
+
+Two worked examples live in `case_studies/`, one per workflow. Each folder has its own `README.md` with the background, the step-by-step run, and notes on the choices made, plus an `inputs/` folder holding the files you load into the GUI.
+
+```
+cd case_studies/case_study1_TMV_TEMPO        # chemical modification: TEMPO spin label on TMV lysine
+cat README.md                                # or open it in any editor / on GitHub
+ls inputs/                                   # TEMPO.pdb is the drug; nitroxide_overrides.prm the charge-override file
+
+cd ../case_study2_QB_zdomain                 # genetic modification: Z domain fused to the Qβ coat protein
+cat README.md
+ls inputs/                                   # 2SPZ_P8.pdb is the GUI input
+```
+
+If you are trying eviVLP for the first time, start with case study 1: it exercises the whole chemical-modification pipeline, and its `inputs/` folder is the test input referred to above. When the GUI asks for a file, browse to the `inputs/` folder of the case study; nothing needs to be copied into the run folder by hand.
 
 ## Requirements
 
