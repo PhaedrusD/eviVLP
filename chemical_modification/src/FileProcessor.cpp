@@ -72,14 +72,15 @@ void FileProcessor::ResetAminoAcidFile(const std::string& aminoAcid) {
 bool FileProcessor::ProcessPatchMakerFile(const std::string& aminoAcid,
                                          const std::vector<std::string>& bondedAtoms,
                                          const std::vector<std::string>& deletedAtoms) {
-    std::string fileName = GetPatchMakerFileName(aminoAcid, false);
+    std::string fileName     = GetPatchMakerFileName(aminoAcid, false);
+    std::string templateName = GetPatchMakerFileName(aminoAcid, true);
     
     if (fileName.empty()) {
         std::cerr << "Invalid amino acid selection: " << aminoAcid << "\n";
         return false;
     }
     
-    std::cout << "Processing patch_maker file: " << fileName << "\n";
+    std::cout << "Processing patch_maker file: " << fileName << " from " << templateName << "\n";
     
     // Create atom_name array (bonded + deleted atoms)
     std::vector<std::string> atomNameArray = CreateAtomNameArray(bondedAtoms, deletedAtoms);
@@ -87,10 +88,13 @@ bool FileProcessor::ProcessPatchMakerFile(const std::string& aminoAcid,
     // Create atom_info array (bonded atoms only)
     std::vector<std::string> atomInfoArray = CreateAtomInfoArray(bondedAtoms);
     
-    // Read the file
-    std::ifstream file(fileName);
+    // Always fill from the template. The working copy (patch_maker_<aa>.py) is
+    // a per-run output and does not exist on a fresh install; reading it here
+    // was why Process Patch Maker failed with "failed to open patch_maker_lys.py"
+    // on a clean checkout. ResetPatchMakerFile afterwards is now just tidy-up.
+    std::ifstream file(templateName);
     if (!file.is_open()) {
-        std::cerr << "Failed to open " << fileName << "\n";
+        std::cerr << "Failed to open " << templateName << "\n";
         return false;
     }
     
