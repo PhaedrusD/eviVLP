@@ -1094,17 +1094,11 @@ void MyFrame::OnRunRenaming(wxCommandEvent& event)
         statusText->AppendText("Error: Atom renaming script failed. Make sure fix_atom_naming_pdb.py exists and python3 is installed.\n");
         return;
     }
-    wxString bbsCommand = "python3 fix_atom_naming_pdb_BBS.py";
-    statusText->AppendText("Running command: " + bbsCommand + "\n");
-    
-    int bbsResult = system(bbsCommand.mb_str());
-    
-    if (bbsResult == 0) {
-        statusText->AppendText("BBS atom renaming script executed successfully.\n");
-    } else {
-        statusText->AppendText("Error: BBS atom renaming script failed. Make sure fix_atom_naming_pdb_BBS.py exists.\n");
-        return;
-    }
+    // (The former fix_atom_naming_pdb_BBS.py step is gone: it renamed the
+    // legacy BB_stick model, BBS.str/BBS.pdb, which nothing downstream has read
+    // since the N-terminus reference moved to RESI BBQ/BBT and ntrm_ref.pdb.
+    // Those files were CGenFF output not shipped in the repo, so the step
+    // failed on every fresh install.)
     statusText->AppendText("Running ./IC_table_one command...\n");
     
     wxString icTableCommand = "./IC_table_one";   // built from IC_table_one.cpp

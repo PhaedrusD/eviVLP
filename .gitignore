@@ -40,3 +40,6 @@ __pycache__/
 # Backups
 *~
 *.bak
+
+# scratch: files the session could not delete; safe to rm
+_to_delete/
