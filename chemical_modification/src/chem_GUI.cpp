@@ -1924,7 +1924,13 @@ void MyFrame::CreateViewQbeta()
 
     wxString assemble = vmdCmd + " -dispdev text -e " "QB_capsid.pgn";
     statusText->AppendText("Running command: " + assemble + "\n");
-    if (RunVmd(assemble, "capsid_naa.pdb") != 0) {
+    statusText->AppendText("  (builds the 180-chain capsid, then solvates and ionises it: about "
+                           "3 million atoms, so expect this step to take several minutes)\n");
+    wxYield();
+    // Expect the solvated system, not just the dry capsid: a water box left by
+    // an earlier run is removed first, so Minimize Capsid can never pick up a
+    // stale one, and a solvate/autoionize failure is reported here.
+    if (RunVmd(assemble, "QB_naa_capsid_wb.pdb") != 0) {
         statusText->AppendText("Error: QB_capsid.pgn failed.\n");
         return;
     }
@@ -1959,7 +1965,7 @@ void MyFrame::CreateViewTMV()
 
     wxString assemble = vmdCmd + " -dispdev text -e " "TMV_all_out.pgn";
     statusText->AppendText("Running command: " + assemble + "\n");
-    if (RunVmd(assemble, "TMV_naa_capsid.pdb") != 0) {
+    if (RunVmd(assemble, "TMV_naa_capsid_wb.pdb") != 0) {   // the solvated system, as for Qbeta
         statusText->AppendText("Error: TMV_all_out.pgn failed.\n");
         return;
     }
@@ -2100,8 +2106,8 @@ void MyFrame::OnMinimizeCapsid(wxCommandEvent& event)
     statusText->AppendText("Minimize Capsid: using " + confFile + "\n");
 
     if (!wxFileExists(wbPdb)) {
-        statusText->AppendText("Error: " + wbPdb + " not found. Run Create/View Capsid "
-                               "first (it solvates and ionizes the capsid).\n");
+        statusText->AppendText("Error: " + wbPdb + " not found. Run '3. Assemble And View Capsid' "
+                               "first (it solvates and ionises the capsid).\n");
         return;
     }
     // NAMD does not read CRYST1, so derive the periodic cell from the solvated

@@ -57,6 +57,15 @@ def main():
         "guesscoord",
         "writepdb capsid_naa.pdb",
         "writepsf capsid_naa.psf",
+        # Solvate and ionise in the same run, as the TMV stream does, so that
+        # Minimize Capsid always gets a water box built from THIS capsid. The
+        # capsid spans ~300 A, so "-t 10" gives the ~320 A cube that used to be
+        # set by hand in Minimize_GUI_solvate.tcl; capsid_cell.py reads the
+        # exact cell back from the CRYST1 record autoionize writes.
+        "package require solvate",
+        "solvate capsid_naa.psf capsid_naa.pdb -t 10 -o QB_all_water",
+        "package require autoionize",
+        "autoionize -psf QB_all_water.psf -pdb QB_all_water.pdb -sc 0.2 -o QB_naa_capsid_wb",
         "exit",
     ]
 
