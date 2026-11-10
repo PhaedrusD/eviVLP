@@ -71,6 +71,7 @@ private:
     void OnProcessPatchMaker(wxCommandEvent& event);
     bool RunOrientStep();   // fill *T1/*T3 in the orient script, run it, reset it
     int  RunVmd(const wxString& command, const wxString& expectedOutput);
+    void LaunchViewer(const wxString& command, const wxString& what);  // interactive VMD, non-blocking
     wxString NtrmVariant();          // "ntrm" (Ala, Qbeta) or "ntrm_ser" (Ser, TMV)
     wxString vmdCmd;                 // resolved at startup, see FindVmd()
     wxString namdCmd;                // resolved at startup, see FindNamd(); includes +p<cores>
@@ -1219,6 +1220,29 @@ bool MyFrame::StageNtrmReference()
 
 // VMD returns 0 even when psfgen aborts inside the script, so success is
 // judged by whether the file the script was meant to write actually appeared.
+// Open an interactive VMD session WITHOUT blocking the GUI.
+//
+// The batch steps use RunVmd(), which waits for VMD to finish - correct for
+// psfgen, wrong for a viewer: system() holds the GUI's only thread until the
+// VMD process ends, and closing VMD's graphics window does not end it (only
+// File > Quit or "quit" in its console does). The GUI then sits under a
+// spinning wheel with nothing to explain why. So the viewer is started
+// asynchronously and the GUI carries on. Output is not redirected here, so
+// VMD's console stays usable in the terminal the GUI was launched from.
+void MyFrame::LaunchViewer(const wxString& command, const wxString& what)
+{
+    statusText->AppendText("Running command: " + command + "\n");
+    const std::string cmd = command.ToStdString();
+    const char* argv[] = { "/bin/sh", "-c", cmd.c_str(), nullptr };
+    if (wxExecute(argv, wxEXEC_ASYNC) <= 0) {
+        statusText->AppendText("Error: could not start VMD to display " + what + ".\n");
+        return;
+    }
+    statusText->AppendText(what + " opened in VMD. The GUI stays usable while VMD is open: carry on "
+                           "with the next step whenever you like, and close VMD with File > Quit "
+                           "when you have finished looking.\n\n");
+}
+
 // True when topology file `rtf` defines "RESI <name>" (a RESI line, not PRES).
 static bool RtfHasResidue(const wxString& rtf, const wxString& name)
 {
@@ -1959,13 +1983,8 @@ void MyFrame::CreateViewQbeta()
     }
     statusText->AppendText("QB_capsid.pgn executed successfully.\n");
 
-    wxString view = vmdCmd + " -e capsid_zoom_naa.tcl";
-    statusText->AppendText("Running command: " + view + "\n");
-    if (RunVmd(view, "") != 0) {
-        statusText->AppendText("Error: capsid_zoom_naa.tcl failed.\n");
-        return;
-    }
-    statusText->AppendText("Qbeta capsid assembled and displayed.\n\n");
+    statusText->AppendText("Qbeta capsid assembled.\n");
+    LaunchViewer(vmdCmd + " -e capsid_zoom_naa.tcl", "The Qbeta capsid");
 }
 
 void MyFrame::CreateViewTMV()
@@ -1994,13 +2013,8 @@ void MyFrame::CreateViewTMV()
     }
     statusText->AppendText("TMV_all_out.pgn executed successfully.\n");
 
-    wxString view = vmdCmd + " -e capsid_zoom_naa_TMV.tcl";
-    statusText->AppendText("Running command: " + view + "\n");
-    if (RunVmd(view, "") != 0) {
-        statusText->AppendText("Error: capsid_zoom_naa_TMV.tcl failed.\n");
-        return;
-    }
-    statusText->AppendText("TMV rod assembled and displayed.\n\n");
+    statusText->AppendText("TMV rod assembled.\n");
+    LaunchViewer(vmdCmd + " -e capsid_zoom_naa_TMV.tcl", "The TMV rod");
 }
 
 
