@@ -281,6 +281,13 @@ MyFrame::MyFrame(const wxString& title)
                                + vmdPath + "  [" + vmdHow + "]\n");
         statusText->AppendText((wxFileExists(namdPath) ? "NAMD: " : "WARNING: NAMD not found - set EVIVLP_NAMD. Tried: ")
                                + namdPath + "  [" + namdHow + "]\n");
+        // Can those two actually run on this Mac? (wrong-chip build, quarantine)
+        if (wxFileExists("check_tools.sh")) {
+            wxArrayString chk, chkErr;
+            wxExecute("sh check_tools.sh " + ShellQuote(vmdPath) + " " + ShellQuote(namdPath),
+                      chk, chkErr, wxEXEC_SYNC);
+            for (const wxString& l : chk) statusText->AppendText("  " + l + "\n");
+        }
         if (wxExecute("python3 -c \"import sys, numpy; print(sys.executable, 'numpy', numpy.__version__)\"",
                       out, err, wxEXEC_SYNC) == 0 && !out.IsEmpty())
             statusText->AppendText("python3 OK: " + out[0] + "\n");
@@ -1775,6 +1782,22 @@ void MyFrame::ShowLogTail(const wxString& logFile, int lines)
         return;
     }
     int n = log.GetLineCount();
+    for (int i = 0; i < n; i++) {
+        const wxString& l = log.GetLine(i);
+        if (l.Contains("Bad CPU type in executable")) {
+            statusText->AppendText("  >> The program was built for the other kind of processor (Intel vs Apple "
+                                   "silicon). Install the build that matches this Mac, or on Apple silicon run "
+                                   "'softwareupdate --install-rosetta --agree-to-license' to use an Intel build. "
+                                   "See the VMD/NAMD lines at the top of this log.\n");
+            break;
+        }
+        if (l.Contains("Operation not permitted") || l.Contains("cannot be opened because")) {
+            statusText->AppendText("  >> macOS blocked the program from launching, usually because it was "
+                                   "downloaded from the web and is quarantined. Run 'xattr -dr "
+                                   "com.apple.quarantine <its folder>' once, then retry.\n");
+            break;
+        }
+    }
     statusText->AppendText("  --- last lines of " + logFile + " ---\n");
     for (int i = (n > lines ? n - lines : 0); i < n; i++)
         statusText->AppendText("  " + log.GetLine(i) + "\n");

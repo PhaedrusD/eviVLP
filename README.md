@@ -64,6 +64,8 @@ Software you install:
 - Open Babel (`brew install open-babel`) — converts the drug structure to MOL2
 - VMD 1.9.4 or later (psfgen and viewing)
 - NAMD 3.x (minimisation)
+
+  On a Mac, download the VMD and NAMD builds that match your processor: **ARM64** for Apple silicon (M-series), **x86_64** for Intel. `uname -m` tells you which you have. The wrong one fails with "Bad CPU type in executable"; `setup.sh` and the GUI's startup log both check for this and say what to do. Any recent version works, installed anywhere normal.
 - An account on the [CGenFF web service](https://cgenff.silcsbio.com/) — the GUI writes the MOL2 files, you upload them there and import the returned stream files
 
 `setup.sh` checks and, on macOS, installs the first three.

@@ -77,6 +77,16 @@ VMD="${EVIVLP_VMD:-$(command -v vmd || ls -d /Applications/VMD*.app/Contents/Mac
 NAMD="${EVIVLP_NAMD:-$(command -v namd3 || ls "$HOME"/Downloads/NAMD*/namd3 /Applications/NAMD*/namd3 2>/dev/null | tail -1)}"
 [ -n "$VMD"  ] && ok "VMD:  $VMD"   || warn "VMD not found. Install VMD 1.9.4+ into /Applications (https://www.ks.uiuc.edu/Research/vmd/) or export EVIVLP_VMD=/path/to/vmd"
 [ -n "$NAMD" ] && ok "NAMD: $NAMD"  || warn "NAMD not found. Unpack NAMD 3.x into ~/Downloads (https://www.ks.uiuc.edu/Research/namd/) or export EVIVLP_NAMD=/path/to/namd3"
+# Right build for this Mac's processor, and not quarantined? (macOS only)
+if [ "$OS" = "Darwin" ]; then
+    case "$(uname -m)" in
+        arm64)  echo "  This Mac has an Apple-silicon processor: download the ARM64 builds of VMD and NAMD." ;;
+        x86_64) echo "  This Mac has an Intel processor: download the x86_64 builds of VMD and NAMD." ;;
+    esac
+    sh "$RUN_DIR/check_tools.sh" "$VMD" "$NAMD" | while IFS= read -r line; do
+        case "$line" in WARNING:*) warn "${line#WARNING: }" ;; *) ok "$line" ;; esac
+    done
+fi
 
 echo
 echo "Done. Start the GUI with:"
